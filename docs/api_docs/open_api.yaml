@@ -1,0 +1,1723 @@
+openapi: 3.1.0
+info:
+  title: NewsTrack API
+  version: 1.0.0
+  description: >
+    REST API contract for **NewsTrack — Newspaper Distribution Tracking System**.
+
+
+    The data model is intentionally generic. A *bundle* (PRD term) is a **Product**;
+    bundle-specific attributes live in `Product.other_info`. A *route* is **not a stored
+    entity** — it is the derived pair `(sender_address_id, recipient_address_id)` and all
+    route analytics group on that pair. A **Delivery** is one movement of products between
+    exactly two nodes, chained through `parent_delivery_id`.
+
+
+    **Actor references** (`created_by`, `sender_id`, `recipient_id`, `assigned_to`, ...) are
+    polymorphic via **Universal ID** and resolve to either a USER or an ORG. Clients send a
+    `universal_id` (preferred) or `{ id, type }`; reads expand the reference.
+
+
+    **Authentication** uses two independent JWT systems — one for platform users, one for drivers.
+  contact:
+    name: NewsTrack Engineering
+
+servers:
+  - url: https://api.newstrack.example.com/v1
+    description: Production
+  - url: https://staging-api.newstrack.example.com/v1
+    description: Staging
+  - url: http://localhost:8000/v1
+    description: Local
+
+tags:
+  - name: Auth
+    description: User and driver authentication (two separate JWT systems)
+  - name: Users
+    description: Platform user accounts
+  - name: Organizations
+    description: Press, Hub, Distribution Unit, and Vendor entities
+  - name: Addresses
+    description: Reusable address records
+  - name: Universal ID
+    description: Polymorphic actor resolution (user or organization)
+  - name: Products
+    description: Products / bundles (newspaper editions or batches)
+  - name: Deliveries
+    description: Distribution movements, status lifecycle, dispatch, confirmation
+  - name: Delivery Items
+    description: Products and quantities carried within a delivery
+  - name: Drivers
+    description: Driver registry (operational data; auth is separate)
+  - name: Vehicles
+    description: Vehicle registry and current driver assignment
+  - name: Assignment Logs
+    description: Immutable audit trail of driver/vehicle assignment changes
+  - name: Delivery Logs
+    description: Immutable per-delivery event log
+  - name: Issues
+    description: Operational problems, assignment, resolution, escalation
+  - name: Issue Logs
+    description: Immutable audit trail of issue actions
+  - name: Notifications
+    description: Alerts and messages delivered to users
+  - name: Delivery Access
+    description: Additional (non-primary) delivery access grants
+  - name: Routes & Analytics
+    description: Derived route performance and reporting
+  - name: Real-Time
+    description: WebSocket event contracts for live boards
+
+security:
+  - userAuth: []
+
+components:
+  securitySchemes:
+    userAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Platform-user access token. Payload carries `sub` (user id), `universal_id`,
+        `organization_id`, and `role` (Administrator | DistributionManager |
+        HubOperator | Vendor). Role is enforced at the API on every protected route.
+    driverAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Driver access token issued by the separate driver auth flow. Payload carries
+        `driver_id` and a `driver` claim. Drivers cannot call user-only endpoints and
+        vice versa.
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+      description: 1-based page number.
+    PageSize:
+      name: page_size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      description: Items per page.
+    Sort:
+      name: sort
+      in: query
+      schema: { type: string }
+      description: "Sort spec, e.g. `created_at:desc`. Comma-separate multiple keys."
+    DateFrom:
+      name: from
+      in: query
+      schema: { type: string, format: date-time }
+      description: Inclusive lower bound on the record's primary timestamp.
+    DateTo:
+      name: to
+      in: query
+      schema: { type: string, format: date-time }
+      description: Inclusive upper bound on the record's primary timestamp.
+
+  responses:
+    BadRequest:
+      description: Validation error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Request body failed validation.
+              details:
+                - field: recipient_id
+                  message: One of universal_id or {id,type} is required.
+    Unauthorized:
+      description: Missing or invalid token.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: { code: UNAUTHORIZED, message: Authentication required. }
+    Forbidden:
+      description: Authenticated but not permitted (role or delivery-access check failed).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: { code: FORBIDDEN, message: You do not have access to this resource. }
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: { code: NOT_FOUND, message: Resource not found. }
+    Conflict:
+      description: State conflict (e.g. editing a frozen delivery).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: { code: CONFLICT, message: Delivery is frozen and cannot be modified. }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable error code.
+              enum:
+                - VALIDATION_ERROR
+                - UNAUTHORIZED
+                - FORBIDDEN
+                - NOT_FOUND
+                - CONFLICT
+                - IMMUTABLE_RECORD
+                - RATE_LIMITED
+                - INTERNAL_ERROR
+            message: { type: string }
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+
+    Pagination:
+      type: object
+      properties:
+        page: { type: integer, example: 1 }
+        page_size: { type: integer, example: 50 }
+        total: { type: integer, example: 327 }
+        total_pages: { type: integer, example: 7 }
+
+    EntityType:
+      type: string
+      enum: [USER, ORG]
+      description: Discriminator for a Universal ID target.
+
+    ActorInput:
+      type: object
+      description: >
+        Polymorphic actor reference on write. Provide `universal_id` (preferred), or
+        `id` + `type`, which the server resolves to a universal_id before access checks.
+      properties:
+        universal_id: { type: string, format: uuid }
+        id:
+          type: string
+          format: uuid
+          description: Raw user id or organization id; requires `type`.
+        type: { $ref: '#/components/schemas/EntityType' }
+      anyOf:
+        - required: [universal_id]
+        - required: [id, type]
+      example: { universal_id: "9b1c...e4" }
+
+    ActorRef:
+      type: object
+      description: Expanded actor reference returned on read.
+      properties:
+        universal_id: { type: string, format: uuid }
+        entity_type: { $ref: '#/components/schemas/EntityType' }
+        entity_id: { type: string, format: uuid }
+        name: { type: string, nullable: true }
+      example:
+        universal_id: "9b1c...e4"
+        entity_type: ORG
+        entity_id: "5a2f...c1"
+        name: Hyderabad Hub
+
+    UserRole:
+      type: string
+      enum: [Administrator, DistributionManager, HubOperator, Vendor]
+      description: Driver is intentionally NOT a user role; drivers authenticate separately.
+
+    OrgType:
+      type: string
+      enum: [Press, Hub, DistributionUnit, Vendor]
+
+    DeliveryType:
+      type: string
+      enum: [Delivery, Handend]
+
+    DeliveryStatus:
+      type: string
+      enum: [Created, Packed, Dispatched, OutForDelivery, Delivered, Terminated]
+      description: >
+        Canonical lifecycle. PRD UI stages (Bundled, In Transit, At Hub) map onto these.
+
+    DeliveryItemStatus:
+      type: string
+      enum: [Pending, Confirmed, Discrepancy, Missed]
+
+    IssueStatus:
+      type: string
+      enum: [Open, Assigned, InProgress, Resolved, Escalated]
+
+    AssignmentAction:
+      type: string
+      enum:
+        - DRIVER_ASSIGNED
+        - DRIVER_CHANGED
+        - DRIVER_REMOVED
+        - VEHICLE_ASSIGNED
+        - VEHICLE_CHANGED
+        - VEHICLE_REMOVED
+
+    AccessLevel:
+      type: string
+      enum: [READ, WRITE, CONFIRM]
+
+    Address:
+      type: object
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        address: { type: string }
+      required: [address]
+
+    Organization:
+      type: object
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        universal_id: { type: string, format: uuid, readOnly: true }
+        parent_id: { type: string, format: uuid, nullable: true }
+        name: { type: string }
+        type: { $ref: '#/components/schemas/OrgType' }
+        email: { type: string, format: email }
+        phone: { type: string }
+        other_info: { type: object, additionalProperties: true }
+        address_id: { type: string, format: uuid, nullable: true }
+      required: [name, type]
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        universal_id: { type: string, format: uuid, readOnly: true }
+        organization_id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        mobile: { type: string }
+        role: { $ref: '#/components/schemas/UserRole' }
+        other_info: { type: object, additionalProperties: true }
+        is_active: { type: boolean, default: true }
+        address_id: { type: string, format: uuid, nullable: true }
+      required: [organization_id, name, email, role]
+
+    Product:
+      type: object
+      description: A product / bundle. Bundle-specific fields live in other_info.
+      properties:
+        product_id: { type: string, format: uuid, readOnly: true }
+        organization_id:
+          type: string
+          format: uuid
+          readOnly: true
+          description: >
+            Owning organization. SERVER-DERIVED from the authenticated creator's
+            organization_id at creation time — never accepted from the request body.
+        created_by: { $ref: '#/components/schemas/ActorRef', readOnly: true }
+        created_at: { type: string, format: date-time, readOnly: true }
+        name: { type: string }
+        stocks:
+          type: integer
+          description: >
+            Set at creation (the production entry). On PATCH, `stocks` may be
+            changed ONLY by an Administrator or a member of the owning Press org;
+            routine reductions happen via the dispatch workflow, not direct edit.
+        short_description: { type: string }
+        description: { type: string }
+        other_info:
+          type: object
+          additionalProperties: true
+          description: "Bundle metadata, e.g. { bundle_id, packing_staff, destination_hub, edition, publication_date }."
+      required: [name]
+
+    DeliveryItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        product_id: { type: string, format: uuid }
+        delivery_id: { type: string, format: uuid, readOnly: true }
+        expected_quantity: { type: integer }
+        confirmed_quantity: { type: integer, nullable: true }
+        status: { $ref: '#/components/schemas/DeliveryItemStatus' }
+        note: { type: string, nullable: true }
+      required: [product_id, expected_quantity]
+
+    Delivery:
+      type: object
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        parent_delivery_id: { type: string, format: uuid, nullable: true }
+        type: { $ref: '#/components/schemas/DeliveryType' }
+        sender: { $ref: '#/components/schemas/ActorRef', readOnly: true }
+        recipient: { $ref: '#/components/schemas/ActorRef', readOnly: true }
+        driver_id: { type: string, format: uuid, nullable: true }
+        vehicle_id: { type: string, format: uuid, nullable: true }
+        status: { $ref: '#/components/schemas/DeliveryStatus' }
+        is_active: { type: boolean }
+        created_by: { $ref: '#/components/schemas/ActorRef', readOnly: true }
+        created_at: { type: string, format: date-time, readOnly: true }
+        sender_address_id: { type: string, format: uuid, nullable: true }
+        recipient_address_id: { type: string, format: uuid, nullable: true }
+        sender_address_snapshot: { type: string, readOnly: true }
+        recipient_address_snapshot: { type: string, readOnly: true }
+        planned_duration: { type: integer, description: Expected duration in minutes. }
+        confirmed_by: { $ref: '#/components/schemas/ActorRef', readOnly: true, nullable: true }
+        confirmed_at: { type: string, format: date-time, nullable: true, readOnly: true }
+        photo_url: { type: string, nullable: true }
+        has_issue: { type: boolean, readOnly: true }
+        issue_count: { type: integer, readOnly: true }
+        note: { type: string, nullable: true }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/DeliveryItem' }
+      required: [type, sender, recipient]
+
+    Driver:
+      type: object
+      properties:
+        driver_id: { type: string, format: uuid, readOnly: true }
+        driver_name: { type: string }
+        mobile: { type: string }
+        email: { type: string, format: email }
+        address: { type: string }
+        other_info: { type: object, additionalProperties: true }
+        is_available: { type: boolean, default: true }
+      required: [driver_name, mobile]
+
+    Vehicle:
+      type: object
+      properties:
+        vehicle_id: { type: string, format: uuid, readOnly: true }
+        vehicle_number: { type: string }
+        vehicle_type: { type: string, enum: ["2W", "3W", "5W"] }
+        capacity: { type: integer }
+        current_driver: { type: string, format: uuid, nullable: true }
+        other_details: { type: object, additionalProperties: true }
+      required: [vehicle_number, vehicle_type]
+
+    DeliveryAssignmentLog:
+      type: object
+      description: Immutable. One row per driver/vehicle assignment change.
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        action: { $ref: '#/components/schemas/AssignmentAction' }
+        entity_type: { type: string }
+        timestamp: { type: string, format: date-time, readOnly: true }
+        driver_id: { type: string, format: uuid, nullable: true }
+        vehicle_id: { type: string, format: uuid, nullable: true }
+        delivery_id: { type: string, format: uuid }
+
+    DeliveryLog:
+      type: object
+      description: Immutable per-delivery event log.
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        delivery_id: { type: string, format: uuid }
+        action: { type: string }
+        remark: { type: string }
+        user_id: { type: string, format: uuid }
+        timestamp: { type: string, format: date-time, readOnly: true }
+
+    Issue:
+      type: object
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        type: { type: string, description: "e.g. Vehicle Breakdown, Route Block, Quantity Shortage, Other." }
+        title: { type: string }
+        description: { type: string }
+        delivery_id: { type: string, format: uuid }
+        assigned_to: { $ref: '#/components/schemas/ActorRef', nullable: true }
+        assigned_at: { type: string, format: date-time, nullable: true }
+        status: { $ref: '#/components/schemas/IssueStatus' }
+        resolution_note: { type: string, nullable: true }
+        created_by: { $ref: '#/components/schemas/ActorRef', readOnly: true }
+        created_at: { type: string, format: date-time, readOnly: true }
+        resolved_by: { $ref: '#/components/schemas/ActorRef', nullable: true, readOnly: true }
+        resolved_at: { type: string, format: date-time, nullable: true, readOnly: true }
+      required: [type, title, delivery_id]
+
+    IssueLog:
+      type: object
+      description: Immutable issue audit entry.
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        issue_id: { type: string, format: uuid }
+        action:
+          type: string
+          enum: [ISSUE_CREATED, ASSIGNED, REASSIGNED, COMMENT_ADDED, STATUS_CHANGED, ESCALATED, RESOLVED]
+        remark: { type: string }
+        user_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time, readOnly: true }
+
+    Notification:
+      type: object
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        type: { type: string }
+        severity: { type: string, enum: [INFO, WARNING, CRITICAL], nullable: true }
+        recipient_id: { type: string, format: uuid }
+        issue_id: { type: string, format: uuid, nullable: true }
+        message: { type: string }
+        is_read: { type: boolean, default: false }
+        created_by: { $ref: '#/components/schemas/ActorRef', readOnly: true }
+        created_at: { type: string, format: date-time, readOnly: true }
+        cleared_at: { type: string, format: date-time, nullable: true }
+
+    DeliveryAccess:
+      type: object
+      description: >
+        ADDITIONAL access grant beyond primary access. Primary access (sender, recipient,
+        assigned driver) is implicit and not stored here.
+      properties:
+        delivery_id: { type: string, format: uuid }
+        participant_id: { type: string, format: uuid, description: universal_id of grantee }
+        entity_type: { $ref: '#/components/schemas/EntityType' }
+        access_level: { $ref: '#/components/schemas/AccessLevel' }
+      required: [delivery_id, participant_id, entity_type, access_level]
+
+paths:
+  # ──────────────────────────────── AUTH ────────────────────────────────
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: User login
+      security: []
+      description: Authenticate a platform user. Returns a user JWT carrying role + universal_id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: Authenticated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  token_type: { type: string, example: Bearer }
+                  expires_in: { type: integer, example: 3600 }
+                  universal_id: { type: string, format: uuid }
+                  user: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh user token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties: { refresh_token: { type: string } }
+      responses:
+        '200':
+          description: New access token.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  expires_in: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Current user
+      responses:
+        '200':
+          description: The authenticated user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /driver/auth/login:
+    post:
+      tags: [Auth]
+      summary: Driver login (separate JWT system)
+      security: []
+      description: >
+        Independent driver authentication. Returns a driver JWT. This token is NOT
+        interchangeable with the user token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mobile, password]
+              properties:
+                mobile: { type: string }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: Authenticated driver.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  token_type: { type: string, example: Bearer }
+                  expires_in: { type: integer }
+                  driver: { $ref: '#/components/schemas/Driver' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ──────────────────────────────── USERS ───────────────────────────────
+  /users:
+    get:
+      tags: [Users]
+      summary: List users
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - { name: organization_id, in: query, schema: { type: string, format: uuid } }
+        - { name: role, in: query, schema: { $ref: '#/components/schemas/UserRole' } }
+        - { name: is_active, in: query, schema: { type: boolean } }
+      responses:
+        '200':
+          description: Paginated users.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/User' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Users]
+      summary: Create user (Administrator only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/User' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /users/{user_id}:
+    parameters:
+      - { name: user_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Users]
+      summary: Get user
+      responses:
+        '200':
+          description: User.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Users]
+      summary: Update user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/User' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Users]
+      summary: Soft-disable user (sets is_active=false; never hard-deletes)
+      responses:
+        '204': { description: Deactivated. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ──────────────────────────── ORGANIZATIONS ───────────────────────────
+  /organizations:
+    get:
+      tags: [Organizations]
+      summary: List organizations (hubs / vendors / presses / units)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - { name: type, in: query, schema: { $ref: '#/components/schemas/OrgType' } }
+        - { name: parent_id, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Paginated organizations.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Organization' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+    post:
+      tags: [Organizations]
+      summary: Register organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Organization' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Organization' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /organizations/{org_id}:
+    parameters:
+      - { name: org_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Organizations]
+      summary: Get organization
+      responses:
+        '200':
+          description: Organization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Organization' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Organizations]
+      summary: Update organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Organization' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Organization' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Organizations]
+      summary: Deactivate organization (never deleted if deliveries/issues/users exist)
+      responses:
+        '204': { description: Deactivated. }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /organizations/{org_id}/performance:
+    parameters:
+      - { name: org_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - $ref: '#/components/parameters/DateFrom'
+      - $ref: '#/components/parameters/DateTo'
+    get:
+      tags: [Organizations]
+      summary: Vendor/hub performance metrics
+      description: Delivery rate %, average confirmation time, missed deliveries, issues raised. Percentages to 2 decimal places.
+      responses:
+        '200':
+          description: Performance metrics.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organization_id: { type: string, format: uuid }
+                  delivery_success_rate: { type: number, format: float, example: 98.42 }
+                  avg_confirmation_minutes: { type: number, format: float }
+                  missed_deliveries: { type: integer }
+                  issues_raised: { type: integer }
+
+  # ──────────────────────────────── ADDRESSES ───────────────────────────
+  /addresses:
+    get:
+      tags: [Addresses]
+      summary: List addresses
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Paginated addresses.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Address' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+    post:
+      tags: [Addresses]
+      summary: Create address
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Address' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Address' }
+
+  /addresses/{address_id}:
+    parameters:
+      - { name: address_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Addresses]
+      summary: Get address
+      responses:
+        '200':
+          description: Address.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Address' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ─────────────────────────────── UNIVERSAL ID ─────────────────────────
+  /universal-ids/resolve:
+    get:
+      tags: [Universal ID]
+      summary: Resolve a universal_id, or resolve {id,type} to a universal_id
+      description: >
+        Helper used when a client holds a raw user/org id and needs the universal_id, or
+        vice versa. Exactly one of (universal_id) or (id + type) must be supplied.
+      parameters:
+        - { name: universal_id, in: query, schema: { type: string, format: uuid } }
+        - { name: id, in: query, schema: { type: string, format: uuid } }
+        - { name: type, in: query, schema: { $ref: '#/components/schemas/EntityType' } }
+      responses:
+        '200':
+          description: Resolved reference.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActorRef' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ──────────────────────────────── PRODUCTS ────────────────────────────
+  /products:
+    get:
+      tags: [Products]
+      summary: List products / bundles
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - { name: name, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/DateFrom'
+        - $ref: '#/components/parameters/DateTo'
+      responses:
+        '200':
+          description: Paginated products.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Product' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+    post:
+      tags: [Products]
+      summary: Create product / bundle (production entry)
+      description: >
+        Bundle attributes (bundle_id, packing_staff, destination_hub, edition...) go
+        in other_info.
+
+
+        **Authorization (production guard).** Only a caller who is an `Administrator`,
+        OR whose organization is of `type == Press` (optionally also `Hub`, via the
+        `allow_hub_product_creation` server toggle, default OFF), may create a product.
+        All other callers — DistributionManager, Vendor, HubOperator without the
+        org-type allowance, and any driver token — receive `403`.
+
+
+        **Server-derived fields** (ignored if sent in the body): `organization_id`
+        is taken from the caller's organization, `created_by` from the caller's
+        universal_id, and `created_at` is server-set. A caller therefore cannot forge
+        a product as belonging to another organization.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Product' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /products/{product_id}:
+    parameters:
+      - { name: product_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Products]
+      summary: Get product
+      responses:
+        '200':
+          description: Product.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Products]
+      summary: Update product (e.g. adjust stock)
+      description: >
+        Updates mutable product fields. **Stock integrity:** changing `stocks` is
+        permitted only for an `Administrator` or a member of the product's owning
+        Press org — any other caller attempting to change `stocks` receives `403`.
+        Routine stock reductions occur through the dispatch workflow (a delivery
+        reaching `Dispatched` decrements each item's product stock by its expected
+        quantity), not by direct edit. `organization_id`, `created_by`, and
+        `created_at` are immutable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Product' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ──────────────────────────────── DELIVERIES ──────────────────────────
+  /deliveries:
+    get:
+      tags: [Deliveries]
+      summary: List / search deliveries
+      description: >
+        Results are filtered by the caller's access (admin, sender, recipient, assigned
+        driver, or an explicit Delivery Access grant). Supports the Module 1 status board
+        and 90-day historical lookup.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Sort'
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/DeliveryStatus' } }
+        - { name: sender_id, in: query, schema: { type: string, format: uuid }, description: universal_id of sender }
+        - { name: recipient_id, in: query, schema: { type: string, format: uuid }, description: universal_id of recipient }
+        - { name: driver_id, in: query, schema: { type: string, format: uuid } }
+        - { name: vehicle_id, in: query, schema: { type: string, format: uuid } }
+        - { name: parent_delivery_id, in: query, schema: { type: string, format: uuid } }
+        - { name: has_issue, in: query, schema: { type: boolean } }
+        - { name: sender_address_id, in: query, schema: { type: string, format: uuid }, description: Route grouping key. }
+        - { name: recipient_address_id, in: query, schema: { type: string, format: uuid }, description: Route grouping key. }
+        - $ref: '#/components/parameters/DateFrom'
+        - $ref: '#/components/parameters/DateTo'
+      responses:
+        '200':
+          description: Paginated deliveries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Delivery' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Deliveries]
+      summary: Create delivery (one movement between two nodes)
+      description: >
+        sender/recipient are ActorInput (universal_id or {id,type}). If sender_address_id /
+        recipient_address_id are provided, the server stores the ids (for route analytics)
+        AND captures immutable address snapshots. Items may be inlined.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, sender, recipient]
+              properties:
+                parent_delivery_id: { type: string, format: uuid, nullable: true }
+                type: { $ref: '#/components/schemas/DeliveryType' }
+                sender: { $ref: '#/components/schemas/ActorInput' }
+                recipient: { $ref: '#/components/schemas/ActorInput' }
+                sender_address_id: { type: string, format: uuid, nullable: true }
+                recipient_address_id: { type: string, format: uuid, nullable: true }
+                planned_duration: { type: integer }
+                note: { type: string }
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required: [product_id, expected_quantity]
+                    properties:
+                      product_id: { type: string, format: uuid }
+                      expected_quantity: { type: integer }
+      responses:
+        '201':
+          description: Created (status=Created).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Delivery' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /deliveries/{delivery_id}:
+    parameters:
+      - { name: delivery_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Deliveries]
+      summary: Get delivery (with items)
+      responses:
+        '200':
+          description: Delivery.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Delivery' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Deliveries]
+      summary: Update mutable delivery fields
+      description: Rejected with 409 if delivery is frozen (status Delivered or Terminated).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                planned_duration: { type: integer }
+                note: { type: string }
+                sender_address_id: { type: string, format: uuid }
+                recipient_address_id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Delivery' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /deliveries/{delivery_id}/status:
+    parameters:
+      - { name: delivery_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Deliveries]
+      summary: Advance delivery status
+      description: >
+        Transitions follow Created → Packed → Dispatched → OutForDelivery → Delivered, or
+        Terminated from any non-terminal state. Each transition writes a Delivery Log entry.
+        Drivers (driver JWT) may set transit statuses; this powers Module 4 real-time updates
+        and emits a `delivery.status_changed` WebSocket event.
+      security:
+        - userAuth: []
+        - driverAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/DeliveryStatus' }
+                remark: { type: string }
+      responses:
+        '200':
+          description: Updated delivery.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Delivery' }
+        '409':
+          description: Illegal transition or frozen delivery.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /deliveries/{delivery_id}/confirm:
+    parameters:
+      - { name: delivery_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Deliveries]
+      summary: Confirm delivery (Module 5)
+      description: >
+        Records confirmed_by, confirmed_at, optional photo proof, and per-item confirmed
+        quantities. Quantity mismatch flags the item Discrepancy and raises an alert.
+        Once confirmed the record is immutable (audit trail).
+      security:
+        - userAuth: []
+        - driverAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                photo_url: { type: string }
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required: [item_id, confirmed_quantity]
+                    properties:
+                      item_id: { type: string, format: uuid }
+                      confirmed_quantity: { type: integer }
+      responses:
+        '200':
+          description: Confirmed delivery.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Delivery' }
+        '409':
+          description: Already confirmed (immutable).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /deliveries/{delivery_id}/assign:
+    parameters:
+      - { name: delivery_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Deliveries]
+      summary: Assign or change driver / vehicle
+      description: >
+        Sets driver_id and/or vehicle_id and writes a Delivery Assignment Log row
+        (DRIVER_ASSIGNED / DRIVER_CHANGED / VEHICLE_ASSIGNED / VEHICLE_CHANGED). Assignment
+        history is never overwritten silently.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                driver_id: { type: string, format: uuid, nullable: true }
+                vehicle_id: { type: string, format: uuid, nullable: true }
+                remark: { type: string }
+      responses:
+        '200':
+          description: Updated delivery.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Delivery' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /deliveries/{delivery_id}/manifest:
+    parameters:
+      - { name: delivery_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Deliveries]
+      summary: Bundle manifest for a delivery
+      description: All delivery items (bundles + quantities) on this delivery. Module 2 manifest view.
+      responses:
+        '200':
+          description: Manifest.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  delivery_id: { type: string, format: uuid }
+                  vehicle_id: { type: string, format: uuid, nullable: true }
+                  items: { type: array, items: { $ref: '#/components/schemas/DeliveryItem' } }
+
+  /deliveries/{delivery_id}/logs:
+    parameters:
+      - { name: delivery_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Delivery Logs]
+      summary: Per-delivery event log (immutable)
+      responses:
+        '200':
+          description: Delivery logs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/DeliveryLog' } }
+
+  /deliveries/{delivery_id}/assignment-logs:
+    parameters:
+      - { name: delivery_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Assignment Logs]
+      summary: Driver/vehicle assignment history (immutable)
+      responses:
+        '200':
+          description: Assignment logs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/DeliveryAssignmentLog' } }
+
+  # ───────────────────────────── DELIVERY ITEMS ─────────────────────────
+  /deliveries/{delivery_id}/items:
+    parameters:
+      - { name: delivery_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Delivery Items]
+      summary: List items on a delivery
+      responses:
+        '200':
+          description: Items.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/DeliveryItem' } }
+    post:
+      tags: [Delivery Items]
+      summary: Add item to delivery
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeliveryItem' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeliveryItem' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /delivery-items/{item_id}:
+    parameters:
+      - { name: item_id, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      tags: [Delivery Items]
+      summary: Update item (quantity / status / note)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeliveryItem' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeliveryItem' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ──────────────────────────────── DRIVERS ─────────────────────────────
+  /drivers:
+    get:
+      tags: [Drivers]
+      summary: List drivers
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - { name: is_available, in: query, schema: { type: boolean } }
+      responses:
+        '200':
+          description: Paginated drivers.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Driver' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+    post:
+      tags: [Drivers]
+      summary: Register driver
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Driver' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Driver' }
+
+  /drivers/{driver_id}:
+    parameters:
+      - { name: driver_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Drivers]
+      summary: Get driver
+      responses:
+        '200':
+          description: Driver.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Driver' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Drivers]
+      summary: Update driver (e.g. availability)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Driver' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Driver' }
+
+  /driver/me/deliveries:
+    get:
+      tags: [Drivers]
+      summary: Deliveries assigned to the authenticated driver
+      security:
+        - driverAuth: []
+      description: Driver-facing list for the mobile app — assigned route and manifest.
+      responses:
+        '200':
+          description: Assigned deliveries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Delivery' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ──────────────────────────────── VEHICLES ────────────────────────────
+  /vehicles:
+    get:
+      tags: [Vehicles]
+      summary: List vehicles
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - { name: vehicle_type, in: query, schema: { type: string, enum: ["2W","3W","5W"] } }
+      responses:
+        '200':
+          description: Paginated vehicles.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Vehicle' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+    post:
+      tags: [Vehicles]
+      summary: Register vehicle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Vehicle' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Vehicle' }
+
+  /vehicles/{vehicle_id}:
+    parameters:
+      - { name: vehicle_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Vehicles]
+      summary: Get vehicle
+      responses:
+        '200':
+          description: Vehicle.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Vehicle' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Vehicles]
+      summary: Update vehicle (incl. current_driver)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Vehicle' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Vehicle' }
+
+  # ──────────────────────────────── ISSUES ──────────────────────────────
+  /issues:
+    get:
+      tags: [Issues]
+      summary: List / search issues
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/IssueStatus' } }
+        - { name: type, in: query, schema: { type: string } }
+        - { name: delivery_id, in: query, schema: { type: string, format: uuid } }
+        - { name: assigned_to, in: query, schema: { type: string, format: uuid }, description: universal_id }
+      responses:
+        '200':
+          description: Paginated issues.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Issue' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+    post:
+      tags: [Issues]
+      summary: Raise an issue
+      description: Any authenticated user or driver may raise an issue. Sets delivery.has_issue=true.
+      security:
+        - userAuth: []
+        - driverAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, title, delivery_id]
+              properties:
+                type: { type: string }
+                title: { type: string }
+                description: { type: string }
+                delivery_id: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Created (status=Open).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Issue' }
+
+  /issues/{issue_id}:
+    parameters:
+      - { name: issue_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Issues]
+      summary: Get issue
+      responses:
+        '200':
+          description: Issue.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Issue' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /issues/{issue_id}/assign:
+    parameters:
+      - { name: issue_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Issues]
+      summary: Assign / reassign issue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [assigned_to]
+              properties:
+                assigned_to: { $ref: '#/components/schemas/ActorInput' }
+                deadline: { type: string, format: date-time }
+                remark: { type: string }
+      responses:
+        '200':
+          description: Assigned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Issue' }
+
+  /issues/{issue_id}/status:
+    parameters:
+      - { name: issue_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Issues]
+      summary: Change issue status
+      description: Each change writes an Issue Log entry and may emit notifications. Resolving requires a resolution_note.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/IssueStatus' }
+                resolution_note: { type: string }
+                remark: { type: string }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Issue' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /issues/{issue_id}/logs:
+    parameters:
+      - { name: issue_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Issue Logs]
+      summary: Issue audit trail (immutable)
+      responses:
+        '200':
+          description: Issue logs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/IssueLog' } }
+    post:
+      tags: [Issue Logs]
+      summary: Add a comment log entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [remark]
+              properties:
+                remark: { type: string }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssueLog' }
+
+  # ───────────────────────────── NOTIFICATIONS ──────────────────────────
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: List notifications for the current user
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - { name: is_read, in: query, schema: { type: boolean } }
+      responses:
+        '200':
+          description: Paginated notifications.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Notification' } }
+                  unread_count: { type: integer }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+
+  /notifications/{notification_id}/read:
+    parameters:
+      - { name: notification_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Notifications]
+      summary: Mark notification read
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Notification' }
+
+  /notifications/{notification_id}/clear:
+    parameters:
+      - { name: notification_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Notifications]
+      summary: Soft-clear notification (sets cleared_at; history preserved)
+      responses:
+        '200':
+          description: Cleared.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Notification' }
+
+  # ─────────────────────────── DELIVERY ACCESS ──────────────────────────
+  /deliveries/{delivery_id}/access:
+    parameters:
+      - { name: delivery_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Delivery Access]
+      summary: List additional access grants on a delivery
+      description: Primary access (sender/recipient/driver) is implicit and not listed here.
+      responses:
+        '200':
+          description: Grants.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/DeliveryAccess' } }
+    post:
+      tags: [Delivery Access]
+      summary: Grant additional access (Administrator)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [participant_id, entity_type, access_level]
+              properties:
+                participant_id: { type: string, format: uuid, description: universal_id of grantee }
+                entity_type: { $ref: '#/components/schemas/EntityType' }
+                access_level: { $ref: '#/components/schemas/AccessLevel' }
+      responses:
+        '201':
+          description: Granted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeliveryAccess' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Delivery Access]
+      summary: Revoke an additional access grant
+      parameters:
+        - { name: participant_id, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Revoked. }
+
+  # ─────────────────────────── ROUTES & ANALYTICS ───────────────────────
+  /routes/performance:
+    get:
+      tags: [Routes & Analytics]
+      summary: Route performance (derived from address pair)
+      description: >
+        A route = (sender_address_id, recipient_address_id). Returns min/max/avg duration,
+        on-time %, and delay frequency. Omit the pair to get all routes ranked.
+      parameters:
+        - { name: sender_address_id, in: query, schema: { type: string, format: uuid } }
+        - { name: recipient_address_id, in: query, schema: { type: string, format: uuid } }
+        - $ref: '#/components/parameters/DateFrom'
+        - $ref: '#/components/parameters/DateTo'
+      responses:
+        '200':
+          description: Route metrics.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        sender_address_id: { type: string, format: uuid }
+                        recipient_address_id: { type: string, format: uuid }
+                        total_runs: { type: integer }
+                        min_duration: { type: integer }
+                        max_duration: { type: integer }
+                        avg_duration: { type: number, format: float }
+                        on_time_pct: { type: number, format: float, example: 96.55 }
+                        delay_frequency: { type: number, format: float }
+
+  /reports/daily-summary:
+    get:
+      tags: [Routes & Analytics]
+      summary: Daily distribution summary
+      description: Bundles created/dispatched/delivered/pending, missed deliveries, delays, issues. Live-updating KPI source.
+      parameters:
+        - { name: date, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  date: { type: string, format: date }
+                  bundles_created: { type: integer }
+                  dispatched: { type: integer }
+                  delivered: { type: integer }
+                  pending: { type: integer }
+                  missed_deliveries: { type: integer }
+                  delays: { type: integer }
+                  issues_raised: { type: integer }
+
+  /reports/delivery-success:
+    get:
+      tags: [Routes & Analytics]
+      summary: Delivery success rate by route / vendor / hub
+      parameters:
+        - { name: group_by, in: query, schema: { type: string, enum: [route, vendor, hub] } }
+        - $ref: '#/components/parameters/DateFrom'
+        - $ref: '#/components/parameters/DateTo'
+      responses:
+        '200':
+          description: Success rates (2 decimal places).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group_by: { type: string }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string }
+                        success_rate: { type: number, format: float, example: 98.42 }
+                        total: { type: integer }
+                        delivered: { type: integer }
+                        missed: { type: integer }
+
+  /reports/export:
+    get:
+      tags: [Routes & Analytics]
+      summary: Export a report to PDF
+      description: PDF includes report title, date range, and generation timestamp.
+      parameters:
+        - { name: report, in: query, required: true, schema: { type: string, enum: [daily-summary, delivery-success, route-performance, vendor-performance] } }
+        - $ref: '#/components/parameters/DateFrom'
+        - $ref: '#/components/parameters/DateTo'
+      responses:
+        '200':
+          description: PDF document.
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
