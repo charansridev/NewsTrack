@@ -88,6 +88,26 @@ Effective check per delivery:
 
 ---
 
+## Implementation notes (extensions beyond the base contract)
+
+These reflect the running implementation:
+
+- **`POST /auth/login`** also returns a **`refresh_token`** (use at `POST /auth/refresh`).
+- **`password`** is an accepted **write-only** field on user create/update and driver
+  register/update (sets the login password). It is never returned.
+- **Organizations** carry an **`is_active`** flag; `DELETE` soft-disables (sets it false).
+- **Issues** carry a **`deadline`** (set at assignment); issues past their deadline are
+  **auto-escalated** by a background job.
+- **`Notification.created_by`** is returned as a raw **`universal_id` string** (or null for
+  system notifications), not an expanded `ActorRef`.
+- **Deliveries** record `dispatched_at` / `delivered_at` internally (when those statuses are
+  reached) as the basis for duration/on-time analytics; reaching **`Dispatched`** also
+  decrements each item's product **stock** by its expected quantity.
+- **Stock decrement / delay / missed / escalation** run as periodic background jobs and also
+  surface as `delivery.delay_flagged`, `issue.status_changed`, and `notification.new` events.
+
+---
+
 ## Conventions
 
 **Auth header**

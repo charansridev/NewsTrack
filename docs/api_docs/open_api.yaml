@@ -293,6 +293,10 @@ components:
         phone: { type: string }
         other_info: { type: object, additionalProperties: true }
         address_id: { type: string, format: uuid, nullable: true }
+        is_active:
+          type: boolean
+          default: true
+          description: Soft-disable flag. DELETE sets this false instead of hard-deleting.
       required: [name, type]
 
     User:
@@ -308,6 +312,13 @@ components:
         other_info: { type: object, additionalProperties: true }
         is_active: { type: boolean, default: true }
         address_id: { type: string, format: uuid, nullable: true }
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          description: >
+            Write-only. Optional on create/update; sets the user's login password.
+            Never returned in any response.
       required: [organization_id, name, email, role]
 
     Product:
@@ -391,6 +402,13 @@ components:
         address: { type: string }
         other_info: { type: object, additionalProperties: true }
         is_available: { type: boolean, default: true }
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          description: >
+            Write-only. Optional on register/update; sets the driver's login password
+            for the separate driver auth system. Never returned in any response.
       required: [driver_name, mobile]
 
     Vehicle:
@@ -437,6 +455,11 @@ components:
         delivery_id: { type: string, format: uuid }
         assigned_to: { $ref: '#/components/schemas/ActorRef', nullable: true }
         assigned_at: { type: string, format: date-time, nullable: true }
+        deadline:
+          type: string
+          format: date-time
+          nullable: true
+          description: Resolution deadline set at assignment; drives auto-escalation.
         status: { $ref: '#/components/schemas/IssueStatus' }
         resolution_note: { type: string, nullable: true }
         created_by: { $ref: '#/components/schemas/ActorRef', readOnly: true }
@@ -468,7 +491,15 @@ components:
         issue_id: { type: string, format: uuid, nullable: true }
         message: { type: string }
         is_read: { type: boolean, default: false }
-        created_by: { $ref: '#/components/schemas/ActorRef', readOnly: true }
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+          readOnly: true
+          description: >
+            universal_id of the actor that generated the notification, or null for
+            system-generated ones. (Unlike other actor fields this is returned as a
+            raw universal_id, not an expanded ActorRef.)
         created_at: { type: string, format: date-time, readOnly: true }
         cleared_at: { type: string, format: date-time, nullable: true }
 
@@ -511,6 +542,7 @@ paths:
                 type: object
                 properties:
                   access_token: { type: string }
+                  refresh_token: { type: string, description: Use at POST /auth/refresh to mint a new access token. }
                   token_type: { type: string, example: Bearer }
                   expires_in: { type: integer, example: 3600 }
                   universal_id: { type: string, format: uuid }

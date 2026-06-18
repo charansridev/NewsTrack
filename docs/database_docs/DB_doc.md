@@ -91,6 +91,7 @@ Organizations may have parent-child relationships.
 | phone | String | Contact number |
 | other_info | JSONB | Organization-specific data |
 | address_id | FK | Organization address |
+| is_active | Boolean | Soft-disable flag; DELETE sets this false instead of hard-deleting |
 ---
 
 
@@ -510,8 +511,10 @@ Examples:
 | recipient_address_snapshot | Text | Recipient address at creation time |
 | sender_address_id | UUID | nullable |
 | recipient_address_id | UUID | nullable |
-| planned_duration | Integer | Expected duration |
-| confirmed_by | FK Nullable | User confirming delivery |
+| planned_duration | Integer | Expected duration (minutes) |
+| dispatched_at | DateTime Nullable | Set when status → Dispatched; basis for actual-duration analytics |
+| delivered_at | DateTime Nullable | Set when status → Delivered; basis for actual-duration analytics |
+| confirmed_by | FK Nullable | Universal ID of the confirming actor (USER or ORG) |
 | confirmed_at | DateTime Nullable | Confirmation timestamp |
 | photo_url | String Nullable | Proof-of-delivery image |
 | has_issue | Boolean | Indicates unresolved issues exist |
@@ -656,8 +659,9 @@ Examples:
 | title | String | Short issue title |
 | description | Text | Detailed issue description |
 | delivery_id | FK | Related delivery |
-| assigned_to | FK | User responsible for resolution |
+| assigned_to | FK | Universal ID of the responsible actor (USER or ORG) |
 | assigned_at | DateTime | Assignment timestamp |
+| deadline | DateTime Nullable | Resolution deadline set at assignment; past-deadline issues auto-escalate |
 | status | Enum | Current issue status |
 | resolution_note | Text | Resolution summary |
 | created_by | FK | User who created the issue |
