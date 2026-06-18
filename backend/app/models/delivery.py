@@ -71,6 +71,9 @@ class Delivery(Base):
     sender_address_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
     recipient_address_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
     planned_duration: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Stamped on the status transitions; the basis for actual-duration analytics.
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     confirmed_by: Mapped[str | None] = mapped_column(
         UUIDType, ForeignKey("universal_id.id"), nullable=True
     )

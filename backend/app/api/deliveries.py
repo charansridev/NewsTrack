@@ -50,6 +50,11 @@ from app.services.deliveries import (
     item_out,
     validate_transition,
 )
+from app.realtime.events import (
+    emit_assignment_changed,
+    emit_confirmed,
+    emit_status_changed,
+)
 from app.services.references import resolve_input_model
 
 router = APIRouter(tags=["Deliveries"])
@@ -230,13 +235,18 @@ def change_status(
     d = check_delivery_access(db, actor, delivery_id, AccessLevel.WRITE)
     validate_transition(d.status, body.status)
     d.status = body.status
+    now = _utcnow()
     if body.status == DeliveryStatus.Dispatched:
+        d.dispatched_at = now
         _decrement_stock_for_dispatch(db, d)
+    if body.status == DeliveryStatus.Delivered:
+        d.delivered_at = now
     if body.status in (DeliveryStatus.Delivered, DeliveryStatus.Terminated):
         d.is_active = False
     _log(db, d.id, f"STATUS_{body.status.value}", actor, body.remark)
     db.commit()
     db.refresh(d)
+    emit_status_changed(d)
     return delivery_out(db, d)
 
 
@@ -253,6 +263,7 @@ def assign_delivery(
         raise Conflict("Delivery is frozen and cannot be modified.")
 
     fields = body.model_dump(exclude_unset=True)
+    emitted_actions: list[AssignmentAction] = []
 
     # ── Driver assignment (logged, never silently overwritten) ──────────────
     if "driver_id" in fields:
@@ -276,6 +287,7 @@ def assign_delivery(
                 action=action, entity_type="DRIVER", delivery_id=d.id,
                 driver_id=new_driver, vehicle_id=d.vehicle_id, remark=body.remark,
             ))
+            emitted_actions.append(action)
 
     # ── Vehicle assignment ──────────────────────────────────────────────────
     if "vehicle_id" in fields:
@@ -293,9 +305,12 @@ def assign_delivery(
                 action=action, entity_type="VEHICLE", delivery_id=d.id,
                 driver_id=d.driver_id, vehicle_id=new_vehicle, remark=body.remark,
             ))
+            emitted_actions.append(action)
 
     db.commit()
     db.refresh(d)
+    for act in emitted_actions:
+        emit_assignment_changed(d, act.value)
     return delivery_out(db, d)
 
 
@@ -333,6 +348,7 @@ def confirm_delivery(
          actor, "Discrepancy detected" if has_discrepancy else "Confirmed without discrepancy")
     db.commit()
     db.refresh(d)
+    emit_confirmed(d, has_discrepancy)
     return delivery_out(db, d)
 
 

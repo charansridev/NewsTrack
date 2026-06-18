@@ -27,6 +27,17 @@ class Settings(BaseSettings):
     # Default OFF — only Administrators and Press-org users create products.
     allow_hub_product_creation: bool = False
 
+    # Periodic background-job scheduler (delay/missed/escalation sweeps).
+    enable_background_jobs: bool = True
+    background_job_interval_sec: int = 60
+
+    # CORS allowed origins for the browser frontend (comma-separated in .env).
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
 
 @lru_cache
 def get_settings() -> Settings:

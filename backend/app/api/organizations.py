@@ -1,8 +1,11 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, require_roles
+from app.services.analytics import org_performance
 from app.core.errors import Conflict, NotFound
 from app.core.identity import create_organization
 from app.core.pagination import PageParams, paginate, page_params
@@ -117,15 +120,10 @@ def deactivate_organization(
 @router.get("/organizations/{org_id}/performance")
 def organization_performance(
     org_id: str,
+    from_: datetime | None = Query(default=None, alias="from"),
+    to: datetime | None = Query(default=None),
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):
-    # Phase 3 stub — real metrics computed in Phase 7.
     _get_or_404(db, org_id)
-    return {
-        "organization_id": org_id,
-        "delivery_success_rate": 0.0,
-        "avg_confirmation_minutes": 0.0,
-        "missed_deliveries": 0,
-        "issues_raised": 0,
-    }
+    return org_performance(db, org_id, from_, to)

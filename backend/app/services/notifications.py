@@ -13,6 +13,21 @@ from app.models.universal_id import UniversalID
 from app.models.user import User
 
 
+def notification_payload(n: Notification) -> dict:
+    """Serialize a Notification for the notification.new WebSocket event."""
+    return {
+        "id": n.id,
+        "type": n.type,
+        "severity": n.severity.value if n.severity else None,
+        "recipient_id": n.recipient_id,
+        "issue_id": n.issue_id,
+        "message": n.message,
+        "is_read": n.is_read,
+        "created_at": n.created_at.isoformat() if n.created_at else None,
+        "cleared_at": None,
+    }
+
+
 def create_notification(
     db: Session,
     *,

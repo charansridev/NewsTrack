@@ -47,6 +47,7 @@ def issue_access_filter(stmt: Select, actor: Actor) -> Select:
 
 def recompute_has_issue(db: Session, delivery_id: str) -> None:
     """delivery.has_issue := any unresolved issue exists on the delivery."""
+    db.flush()  # ensure pending status changes are visible to the COUNT
     open_count = db.execute(
         select(func.count())
         .select_from(Issue)
