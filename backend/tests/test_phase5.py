@@ -11,7 +11,10 @@ def world(client, admin):
                        json={"name": "Press", "type": "Press"}).json()
     hub = client.post("/v1/organizations", headers=h,
                      json={"name": "Hub", "type": "Hub"}).json()
-    product = client.post("/v1/products", headers=h, json={"name": "Daily", "stocks": 9000}).json()
+    product = client.post("/v1/products", headers=h, json={"name": "Daily"}).json()
+    inv = client.post("/v1/inventory", headers=h, json={
+        "organization_id": press["id"], "product_id": product["product_id"],
+        "set_quantity": 1000000}).json()
     # Register two drivers via the API (with login passwords) + a vehicle.
     d1 = client.post("/v1/drivers", headers=h, json={
         "driver_name": "Ravi", "mobile": "9111111111", "password": "ravi-pass"}).json()
@@ -20,7 +23,7 @@ def world(client, admin):
     veh = client.post("/v1/vehicles", headers=h, json={
         "vehicle_number": "TS09XY1", "vehicle_type": "3W", "current_driver": d1["driver_id"]}).json()
     return {"h": h, "press": press, "hub": hub, "product": product,
-            "d1": d1, "d2": d2, "veh": veh}
+            "inv_id": inv["inventory_id"], "d1": d1, "d2": d2, "veh": veh}
 
 
 def _make_delivery(client, w, driver_id=None):
@@ -28,7 +31,7 @@ def _make_delivery(client, w, driver_id=None):
         "type": "Delivery",
         "sender": {"universal_id": w["press"]["universal_id"]},
         "recipient": {"universal_id": w["hub"]["universal_id"]},
-        "items": [{"product_id": w["product"]["product_id"], "expected_quantity": 1000}],
+        "allocations": [{"inventory_id": w["inv_id"], "expected_quantity": 1000}],
     }).json()["id"]
     if driver_id:
         client.post(f"/v1/deliveries/{did}/assign", headers=w["h"], json={"driver_id": driver_id})

@@ -12,9 +12,12 @@ def seeded(client, admin):
     vendor = client.post("/v1/organizations", headers=h, json={"name": "Vendor A", "type": "Vendor"}).json()
     a1 = client.post("/v1/addresses", headers=h, json={"address": "Press Rd"}).json()
     a2 = client.post("/v1/addresses", headers=h, json={"address": "Hub Ave"}).json()
-    product = client.post("/v1/products", headers=h, json={"name": "Daily", "stocks": 100000}).json()
+    product = client.post("/v1/products", headers=h, json={"name": "Daily"}).json()
+    inv = client.post("/v1/inventory", headers=h, json={
+        "organization_id": press["id"], "product_id": product["product_id"],
+        "set_quantity": 10000000}).json()
     return {"h": h, "press": press, "hub": hub, "vendor": vendor,
-            "a1": a1, "a2": a2, "product": product}
+            "a1": a1, "a2": a2, "product": product, "inv_id": inv["inventory_id"]}
 
 
 def _run_delivery(client, h, w, recipient, *, deliver=True, planned=60, terminate=False):
@@ -26,7 +29,7 @@ def _run_delivery(client, h, w, recipient, *, deliver=True, planned=60, terminat
         "sender_address_id": w["a1"]["id"],
         "recipient_address_id": w["a2"]["id"],
         "planned_duration": planned,
-        "items": [{"product_id": w["product"]["product_id"], "expected_quantity": 500}],
+        "allocations": [{"inventory_id": w["inv_id"], "expected_quantity": 500}],
     }).json()["id"]
     client.post(f"/v1/deliveries/{did}/status", headers=h, json={"status": "Packed"})
     client.post(f"/v1/deliveries/{did}/status", headers=h, json={"status": "Dispatched"})

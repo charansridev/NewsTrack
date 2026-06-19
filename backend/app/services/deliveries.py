@@ -5,19 +5,19 @@ from sqlalchemy.orm import Session
 
 from app.core.dependencies import Actor
 from app.core.errors import Conflict, ImmutableRecord
-from app.models.delivery import Delivery, DeliveryAccess, DeliveryItem
+from app.models.delivery import Delivery, DeliveryAccess, DeliveryAllocation
 from app.models.enums import (
     DELIVERY_FORWARD_ORDER,
     DELIVERY_TERMINAL_STATES,
     DeliveryStatus,
 )
-from app.schemas.delivery import DeliveryItemOut, DeliveryOut
+from app.schemas.delivery import AllocationOut, DeliveryOut
 from app.services.references import expand_reference
 
 
 # ── Serialization ─────────────────────────────────────────────────────────────
-def item_out(item: DeliveryItem) -> DeliveryItemOut:
-    return DeliveryItemOut.model_validate(item)
+def allocation_out(alloc: DeliveryAllocation) -> AllocationOut:
+    return AllocationOut.model_validate(alloc)
 
 
 def delivery_out(db: Session, d: Delivery) -> DeliveryOut:
@@ -45,7 +45,7 @@ def delivery_out(db: Session, d: Delivery) -> DeliveryOut:
         has_issue=d.has_issue,
         issue_count=d.issue_count,
         note=d.note,
-        items=[item_out(i) for i in sorted(d.items, key=lambda x: x.id)],
+        allocations=[allocation_out(a) for a in sorted(d.allocations, key=lambda x: x.allocation_id)],
     )
 
 

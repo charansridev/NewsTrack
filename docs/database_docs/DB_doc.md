@@ -14,7 +14,7 @@ A user always belongs to an organization.
 ---
 
 ## Fields
-| Field | Type | Description |
+| <u>Field</u> | <u>Type</u> | <u>Description</u> |
 | ----- | ----- | ----- |
 | id | UUID | Unique user identifier |
 | universal_id | FK | Reference to Universal ID entity |
@@ -80,7 +80,7 @@ Organizations may have parent-child relationships.
 ---
 
 ## Fields
-| Field | Type | Description |
+| <u>Field</u> | <u>Type</u> | <u>Description</u> |
 | ----- | ----- | ----- |
 | id | UUID | Organization identifier |
 | universal_id | FK | Reference to Universal ID |
@@ -93,8 +93,6 @@ Organizations may have parent-child relationships.
 | address_id | FK | Organization address |
 | is_active | Boolean | Soft-disable flag; DELETE sets this false instead of hard-deleting |
 ---
-
-
 
 ---
 
@@ -150,7 +148,7 @@ Delivery records use address snapshots instead.
 ---
 
 ## Fields
-| Field | Type | Description |
+| <u>Field</u> | <u>Type</u> | <u>Description</u> |
 | ----- | ----- | ----- |
 | id | UUID | Address identifier |
 | address | Text | Complete formatted address |
@@ -188,8 +186,6 @@ OrganizationUsers
 ```
 when appropriate.
 
-
-
 ---
 
 # 4. Driver Details
@@ -201,7 +197,7 @@ Drivers can be assigned to deliveries and vehicles. Assignment history is mainta
 ---
 
 ## Fields
-| Field | Type | Description |
+| <u>Field</u> | <u>Type</u> | <u>Description</u> |
 | ----- | ----- | ----- |
 | driver_id | UUID | Unique driver identifier |
 | driver_name | String | Driver full name |
@@ -213,10 +209,7 @@ Drivers can be assigned to deliveries and vehicles. Assignment history is mainta
 ---
 
 ## Relationships
-Driver
-├── can be assigned to many Deliveries
-├── can operate many Vehicles over time
-└── participates in Delivery Assignment Logs
+Driver ├── can be assigned to many Deliveries ├── can operate many Vehicles over time └── participates in Delivery Assignment Logs
 
 ---
 
@@ -242,17 +235,11 @@ If a delivery encounters an issue:
 Driver:
 
 - Name: Ravi Kumar
-- Mobile: 9876543210
-Assigned Deliveries:
-
+- Mobile: 9876543210 Assigned Deliveries:
 - D101
-- D102
-Assignment History:
-
+- D102 Assignment History:
 - D101 → Ravi
 - D101 → Kumar (Replacement)
-
-
 ---
 
 # 5. Vehicle Details
@@ -264,7 +251,7 @@ Vehicles are assigned to deliveries and may be reassigned when operational issue
 ---
 
 ## Fields
-| Field | Type | Description |
+| <u>Field</u> | <u>Type</u> | <u>Description</u> |
 | ----- | ----- | ----- |
 | vehicle_id | UUID | Unique vehicle identifier |
 | vehicle_number | String | Registration number |
@@ -275,10 +262,7 @@ Vehicles are assigned to deliveries and may be reassigned when operational issue
 ---
 
 ## Relationships
-Vehicle
-├── can be assigned to many Deliveries
-├── can be operated by many Drivers over time
-└── participates in Delivery Assignment Logs
+Vehicle ├── can be assigned to many Deliveries ├── can be operated by many Drivers over time └── participates in Delivery Assignment Logs
 
 ---
 
@@ -304,13 +288,7 @@ If a vehicle becomes unavailable:
 ---
 
 ## Example other_info
-{
-"fuel_type": "Diesel"
-"insurance_expiry": "2027-05-01"
-"service_due": "2026-08-15"
-}
-
-
+{ "fuel_type": "Diesel" "insurance_expiry": "2027-05-01" "service_due": "2026-08-15" }
 
 ---
 
@@ -323,7 +301,7 @@ This table acts as an audit trail and allows tracking of all assignment changes 
 ---
 
 ## Fields
-| Field | Type | Description |
+| <u>Field</u> | <u>Type</u> | <u>Description</u> |
 | ----- | ----- | ----- |
 | id | UUID | Unique log identifier |
 | action | Enum | Assignment-related action |
@@ -344,10 +322,7 @@ This table acts as an audit trail and allows tracking of all assignment changes 
 ---
 
 ## Relationships
-Delivery Assignment Log
-├── belongs to Delivery
-├── may reference Driver
-└── may reference Vehicle
+Delivery Assignment Log ├── belongs to Delivery ├── may reference Driver └── may reference Vehicle
 
 ---
 
@@ -372,28 +347,17 @@ Assignment logs are used to reconstruct:
 ## Example Timeline
 Delivery D101
 
-05:00 AM
-DRIVER_ASSIGNED
-Driver: Ravi
+05:00 AM DRIVER_ASSIGNED Driver: Ravi
 
-05:00 AM
-VEHICLE_ASSIGNED
-Vehicle: TS09AB1234
+05:00 AM VEHICLE_ASSIGNED Vehicle: TS09AB1234
 
-06:30 AM
-VEHICLE_CHANGED
-Vehicle: TS09AB5678
+06:30 AM VEHICLE_CHANGED Vehicle: TS09AB5678
 
-07:00 AM
-DRIVER_CHANGED
-Driver: Kumar
+07:00 AM DRIVER_CHANGED Driver: Kumar
 
-08:15 AM
-Delivery Completed
+08:15 AM Delivery Completed
 
 This timeline provides a complete record of operational changes during the delivery lifecycle.
-
-
 
 ---
 
@@ -411,10 +375,10 @@ Examples:
 ---
 
 ## Fields
-| Field | Type | Description |
+| <u>Field</u> | <u>Type</u> | <u>Description</u> |
 | ----- | ----- | ----- |
 | product_id | UUID | Unique product identifier |
-| organization_id | FK | Owning organization. **Server-derived** from the creator's organization at creation time; never client-supplied. |
+| organization_id | FK | <p>Owning organization.</p><p> </p><p>**Server-derived**</p><p> </p><p>from the creator's organization at creation time; never client-supplied.</p> |
 | created_by | FK | Universal ID of the creator (USER or ORG actor reference) |
 | created_at | DateTime | Product creation timestamp (server-set) |
 | name | String | Product name |
@@ -425,10 +389,7 @@ Examples:
 ---
 
 ## Relationships
-Product
-├── can appear in many Delivery Items
-├── belongs to an Organization
-└── participates in delivery chains
+Product ├── can appear in many Delivery Items ├── belongs to an Organization └── participates in delivery chains
 
 ---
 
@@ -438,30 +399,19 @@ A product should represent a specific edition or batch.
 
 Good:
 
-- The Hindu - Morning Edition - 18 Jun 2026
-Bad:
-
+- The Hindu - Morning Edition - 18 Jun 2026 Bad:
 - The Hindu
 ### Creation Authority (production guard)
 A product may only be created by:
 
-- a user whose `role == Administrator`, **or**
-- a user whose organization is of `type == Press` (optionally also `Hub`, via the
-  `allow_hub_product_creation` toggle — default OFF).
-
-All other callers (DistributionManager, Vendor, HubOperator without the allowance,
-and any driver) are rejected with `403`. The owning `organization_id`, `created_by`,
-and `created_at` are derived server-side from the authenticated caller, so a product
-cannot be forged as belonging to another organization.
+- a user whose `role == Administrator` , **or**
+- a user whose organization is of `type == Press`  (optionally also `Hub` , via the `allow_hub_product_creation`  toggle — default OFF).
+All other callers (DistributionManager, Vendor, HubOperator without the allowance, and any driver) are rejected with `403`. The owning `organization_id`, `created_by`, and `created_at` are derived server-side from the authenticated caller, so a product cannot be forged as belonging to another organization.
 
 ### Stock Management
-Stock is set at creation (the production entry) and reduced when products are
-dispatched: a delivery reaching `Dispatched` decrements each item's product stock by
-its `expected_quantity` (clamped at 0; no auto-restock on later termination).
+Stock is set at creation (the production entry) and reduced when products are dispatched: a delivery reaching `Dispatched` decrements each item's product stock by its `expected_quantity` (clamped at 0; no auto-restock on later termination).
 
-Direct edits to `stocks` via `PATCH /products/{id}` are restricted: only an
-`Administrator` or a member of the product's owning Press org may change `stocks`;
-any other caller attempting a stock change receives `403`.
+Direct edits to `stocks` via `PATCH /products/{id}` are restricted: only an `Administrator` or a member of the product's owning Press org may change `stocks`; any other caller attempting a stock change receives `403`.
 
 ### Extensibility
 Additional product attributes should be stored in other_info.
@@ -469,14 +419,7 @@ Additional product attributes should be stored in other_info.
 ---
 
 ## Example other_info
-{
-"edition": "Morning",
-"language": "English",
-"publication_date": "2026-06-18",
-"category": "Daily Newspaper"
-}
-
-
+{ "edition": "Morning", "language": "English", "publication_date": "2026-06-18", "category": "Daily Newspaper" }
 
 ---
 
@@ -494,7 +437,7 @@ Examples:
 ---
 
 ## Fields
-| Field | Type | Description |
+| <u>Field</u> | <u>Type</u> | <u>Description</u> |
 | ----- | ----- | ----- |
 | id | UUID | Delivery identifier |
 | parent_delivery_id | FK Nullable | Parent delivery in chain |
@@ -523,29 +466,12 @@ Examples:
 ---
 
 ## Relationships
-Delivery
-├── has many Delivery Items
-├── has many Issues
-├── has many Notifications
-├── has many Delivery Logs
-├── has many Assignment Logs
-├── belongs to Sender
-├── belongs to Recipient
-├── belongs to Driver
-└── belongs to Vehicle
+Delivery ├── has many Delivery Items ├── has many Issues ├── has many Notifications ├── has many Delivery Logs ├── has many Assignment Logs ├── belongs to Sender ├── belongs to Recipient ├── belongs to Driver └── belongs to Vehicle
 
 ---
 
 ## Delivery Status Flow
-Created
-↓
-Packed
-↓
-Dispatched
-↓
-OutForDelivery
-↓
-Delivered
+Created ↓ Packed ↓ Dispatched ↓ OutForDelivery ↓ Delivered
 
 OR
 
@@ -562,76 +488,123 @@ Parent deliveries allow tracking of product movement through multiple hops.
 
 Example:
 
-Press → Hub
-↓
-Hub → Vendor
-↓
-Vendor → Distribution Unit
+Press → Hub ↓ Hub → Vendor ↓ Vendor → Distribution Unit
 
 ### Delivery Freeze
 When status becomes:
 
 - Delivered
-- Terminated
-The delivery becomes immutable.
-
+- Terminated The delivery becomes immutable.
 Operational fields may no longer be modified.
 
 ### Address Snapshot
 Historical deliveries must remain unchanged even if organization addresses change later.
 
-
-
 ---
 
-# 9. Delivery Items
+# 9. Product Inventory
 ## Purpose
-Represents products being transported within a delivery.
+Represents the current inventory of products owned or received by an organization.
 
-A delivery may contain one or more products.
+This table acts as the **single source of truth** for product stock levels within an organization and tracks inventory received through deliveries.
+
+Products assigned to a delivery must originate from available inventory records.
 
 ---
 
 ## Fields
 | Field | Type | Description |
 | ----- | ----- | ----- |
-| id | UUID | Item identifier |
-| product_id | FK | Product being transported |
-| delivery_id | FK | Parent delivery |
-| expected_quantity | Integer | Planned quantity |
-| confirmed_quantity | Integer | Received quantity |
-| status | Enum | Item status |
-| note | Text | Additional notes |
+| id | UUID | Inventory record identifier |
+| product_id | FK | Referenced product |
+| delivery_id | FK Nullable | Delivery through which stock was received |
+| org_id | FK | Organization owning the inventory |
+| received_stock | Integer | Quantity received from delivery |
+| crt_stock | Integer | Current available stock |
+| status | Enum | Inventory status |
+| received_at | Timestamp | Stock receipt timestamp |
 ---
 
 ## Relationships
-Delivery Item
-├── belongs to Delivery
-└── belongs to Product
+Product Inventory
+
+├── belongs to Product
+
+├── belongs to Organization
+
+└── optionally linked to Delivery
 
 ---
 
 ## Business Rules
-### Quantity Tracking
-Expected quantity is defined at dispatch time.
+### Inventory as Source of Truth
+All available stock for an organization is maintained in Product Inventory.
 
-Confirmed quantity is recorded during delivery confirmation.
+Current stock (`crt_stock`) represents the quantity currently available for future dispatches.
 
-### Product Distribution
-The same product may appear in multiple deliveries.
+---
+
+### Stock Receipt
+Inventory records are created or updated when a delivery is successfully received.
 
 Example:
 
-Press → Hub (5000)
+```
+Press → Hub AProduct: Newspaper BundleQuantity Received: 5000Hub A Inventory:received_stock = 5000crt_stock = 5000
+```
+---
 
-Hub → Vendor A (2000)
+### Delivery Creation Validation
+Products added to a delivery must exist in the sender organization's inventory.
 
-Hub → Vendor B (3000)
+The system must validate that sufficient stock is available before allowing dispatch.
 
-### Item Independence
-Each item is evaluated independently from the overall delivery status.
+Example:
 
+```
+Hub A Inventory:Newspaper Bundle = 5000Dispatch to Vendor A = 2000Dispatch to Vendor B = 3000Remaining Stock = 0
+```
+---
 
+### Inventory Deduction
+When a delivery is dispatched, inventory is deducted from the sender organization's available stock.
+
+```
+Current Stock = 5000Dispatch = 2000Remaining Stock = 3000
+```
+---
+
+### Inventory Ownership
+Each inventory record belongs to exactly one organization.
+
+The same product may exist in multiple organizations with different stock quantities.
+
+Example:
+
+```
+Press InventoryNewspaper Bundle = 10000Hub A InventoryNewspaper Bundle = 3000Hub B InventoryNewspaper Bundle = 7000
+```
+---
+
+### Inventory Status
+Possible statuses:
+
+-  Available 
+-  Reserved 
+-  Low Stock 
+-  Out Of Stock 
+-  Archived 
+---
+
+### Delivery Traceability
+Inventory records maintain a reference to the delivery through which stock was received, allowing complete traceability of product movement across the distribution chain.
+
+Example:
+
+```
+Press → Hub A → Vendor AInventory Record  ↳ Received via Delivery #D001Delivery History can be traced from source to destination.
+```
+This better aligns with your new design where **Product Inventory becomes the central stock ledger**, while **Delivery Details** only records the movement of inventory between organizations.
 
 ---
 
@@ -652,7 +625,7 @@ Examples:
 ---
 
 ## Fields
-| Field | Type | Description |
+| <u>Field</u> | <u>Type</u> | <u>Description</u> |
 | ----- | ----- | ----- |
 | id | UUID | Unique issue identifier |
 | type | String | Issue category |
@@ -671,36 +644,16 @@ Examples:
 ---
 
 ## Relationships
-Issue
-├── belongs to Delivery
-├── has many Issue Logs
-├── has many Notifications
-├── created by User
-├── assigned to User
-└── resolved by User
+Issue ├── belongs to Delivery ├── has many Issue Logs ├── has many Notifications ├── created by User ├── assigned to User └── resolved by User
 
 ---
 
 ## Issue Lifecycle
-Open
-↓
-Assigned
-↓
-In Progress
-↓
-Resolved
+Open ↓ Assigned ↓ In Progress ↓ Resolved
 
 OR
 
-Open
-↓
-Assigned
-↓
-In Progress
-↓
-Escalated
-↓
-Resolved
+Open ↓ Assigned ↓ In Progress ↓ Escalated ↓ Resolved
 
 ---
 
@@ -733,12 +686,7 @@ Every resolved issue must contain a resolution note describing the corrective ac
 Issue:
 
 - Type: Vehicle Breakdown
-- Delivery: D101
-Resolution:
-"Replacement vehicle TS09AB5678 assigned and delivery resumed."
-
-
-
+- Delivery: D101 Resolution: "Replacement vehicle TS09AB5678 assigned and delivery resumed."
 ---
 
 # 11. Notifications
@@ -757,7 +705,7 @@ Examples:
 ---
 
 ## Fields
-| Field | Type | Description |
+| <u>Field</u> | <u>Type</u> | <u>Description</u> |
 | ----- | ----- | ----- |
 | id | UUID | Notification identifier |
 | type | String | Notification category |
@@ -771,10 +719,7 @@ Examples:
 ---
 
 ## Relationships
-Notification
-├── belongs to User
-├── may belong to Issue
-└── may be generated by System or User
+Notification ├── belongs to User ├── may belong to Issue └── may be generated by System or User
 
 ---
 
@@ -801,14 +746,11 @@ They may be marked as cleared for user convenience while preserving history.
 ---
 
 ## Example
-Recipient:
-Distribution Manager
+Recipient: Distribution Manager
 
-Message:
-"Vehicle breakdown reported for Delivery D101."
+Message: "Vehicle breakdown reported for Delivery D101."
 
-Status:
-Unread
+Status: Unread
 
 ---
 
@@ -821,7 +763,7 @@ Issue Logs provide an audit trail of investigation, assignment, escalation, comm
 ---
 
 ## Fields
-| Field | Type | Description |
+| <u>Field</u> | <u>Type</u> | <u>Description</u> |
 | ----- | ----- | ----- |
 | id | UUID | Log identifier |
 | issue_id | FK | Related issue |
@@ -832,9 +774,7 @@ Issue Logs provide an audit trail of investigation, assignment, escalation, comm
 ---
 
 ## Relationships
-Issue Log
-├── belongs to Issue
-└── belongs to User
+Issue Log ├── belongs to Issue └── belongs to User
 
 ---
 
@@ -875,29 +815,17 @@ Remark: Replacement vehicle assigned and delivery resumed.
 ## Example Timeline
 Issue #55
 
-05:15 AM
-ISSUE_CREATED
-"Vehicle breakdown reported."
+05:15 AM ISSUE_CREATED "Vehicle breakdown reported."
 
-05:20 AM
-ASSIGNED
-Assigned to Operations Manager.
+05:20 AM ASSIGNED Assigned to Operations Manager.
 
-05:35 AM
-COMMENT_ADDED
-"Replacement vehicle being arranged."
+05:35 AM COMMENT_ADDED "Replacement vehicle being arranged."
 
-05:50 AM
-RESOLVED
-"Replacement vehicle assigned and delivery resumed."
+05:50 AM RESOLVED "Replacement vehicle assigned and delivery resumed."
 
 This timeline provides a complete record of issue handling throughout its lifecycle.
 
-
-
 ---
-
-
 
 # Dynamic Metadata (other_info)
 ## Purpose
@@ -1009,14 +937,29 @@ Stores product-specific attributes that vary according to product category and b
 ---
 
 ## Business Rules
-### Configuration Driven
-The structure of `other_info` is defined by the implementation configuration and may vary by entity type.
+### Configuration Driven — single source of truth
+The allowed shape of `other_info` is declared in `**backend/app/metadata_schemas.py**` (the `SPECS` registry). That file IS where the per-type model is decided; adding a field there is the only change needed.
+
+The spec is selected by a discriminator per entity:
+
+| <u>Entity</u> | <u>Field</u> | <u>Discriminator</u> | <u>Spec source</u> |
+| ----- | ----- | ----- | ----- |
+| Organization | `other_info`  | `type` (Press/Hub/DistributionUnit/Vendor) | column |
+| User | `other_info`  | `role` (Administrator/DistributionManager/HubOperator/Vendor) | column |
+| Vehicle | `other_details`  | `vehicle_type` (falls back to a shared default) | column |
+| Driver | `other_info`  | — (single default spec) | — |
+| Product | `other_info`  | — (single default spec; holds the bundle fields) | — |
+### Validation — strict allowlist (enforced on create & update)
+The API layer validates metadata on every create/update via `validate_other_info(entity, discriminator, data)`:
+
+- **Unknown keys are rejected** (`400 VALIDATION_ERROR` ) — only declared keys are allowed.
+- **Declared keys are type-checked** (e.g. `capacity`  must be an integer, not a string; booleans are not accepted where an integer is expected).
+- **Required keys** (if any are declared for a type) must be present.
+- Supplying **no metadata** (`null`  / `{}` ) is always valid.
+Error responses list each offending key under `error.details`.
 
 ### Extensible
-New attributes may be added without requiring database schema changes.
-
-### Validation
-The application layer is responsible for validating metadata according to the active implementation rules.
+New attributes are added by editing the registry — no database schema change required.
 
 ### Core Data Separation
 Business-critical fields must remain dedicated database columns.

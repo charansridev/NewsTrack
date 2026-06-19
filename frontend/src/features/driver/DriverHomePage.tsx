@@ -13,8 +13,9 @@ export default function DriverHomePage() {
   const navigate = useNavigate()
   const { logout } = useDriverAuth()
 
-  // Driver session is the separate JWT system — guard inline.
-  if (!tokenStore.getDriverAccess()) return <Navigate to="/driver/login" replace />
+  // Driver session is the separate JWT system. Hooks must run unconditionally,
+  // so gate the query on the token and guard the render below.
+  const hasToken = Boolean(tokenStore.getDriverAccess())
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['driver', 'deliveries'],
@@ -24,12 +25,15 @@ export default function DriverHomePage() {
       })
       return res.data
     },
+    enabled: hasToken,
   })
 
   function handleLogout() {
     logout()
     navigate('/driver/login', { replace: true })
   }
+
+  if (!hasToken) return <Navigate to="/driver/login" replace />
 
   return (
     <div className="mx-auto max-w-md p-4">

@@ -10,15 +10,14 @@ Human-readable companion to `newstrack-openapi.yaml` (the machine-readable sourc
 
 ## Core modeling decisions
 
-These are deliberate and explain why the API doesn't have the resources you might expect from the PRD wording.
-
 | PRD term | In the API |
 |---|---|
-| **Bundle** | A **Product**. Bundle-specific fields (`bundle_id`, `packing_staff`, `destination_hub`, `edition`, ...) live in `Product.other_info`. There is no separate bundle resource. |
-| **Route** | **Not a stored entity.** A route is the derived pair `(sender_address_id, recipient_address_id)`. All route analytics group on that pair. There are no named routes or ordered stop sequences. |
-| **Delivery** | One movement of products between exactly two nodes (Press→Hub, Hub→Vendor, ...), chained via `parent_delivery_id`. |
-| **Manifest** | The set of **Delivery Items** on a delivery. |
-| **Stages** (Bundled / In Transit / At Hub) | UI labels mapped onto the canonical delivery status enum below. |
+| Bundle | A Product. Bundle-specific fields (bundle_id, packing_staff, destination_hub, edition, etc.) live in Product.other_info. |
+| Product Inventory | Source of truth for available stock within an organization. |
+| Route | Not a stored entity. A route is the derived pair (sender_address_id, recipient_address_id). |
+| Delivery | One movement of inventory between exactly two nodes (Press→Hub, Hub→Vendor, etc.), chained via parent_delivery_id. |
+| Manifest | The set of Inventory Allocations attached to a delivery. |
+| Stages | UI labels mapped onto the canonical delivery status enum. |
 
 ---
 
@@ -101,10 +100,14 @@ These reflect the running implementation:
 - **`Notification.created_by`** is returned as a raw **`universal_id` string** (or null for
   system notifications), not an expanded `ActorRef`.
 - **Deliveries** record `dispatched_at` / `delivered_at` internally (when those statuses are
-  reached) as the basis for duration/on-time analytics; reaching **`Dispatched`** also
-  decrements each item's product **stock** by its expected quantity.
-- **Stock decrement / delay / missed / escalation** run as periodic background jobs and also
+  reached) as the basis for duration/on-time analytics; inventory changes are handled by
+  Product Inventory and Delivery Allocation workflows.
+- **Inventory transfer / delay / missed / escalation** run as periodic background jobs and also
   surface as `delivery.delay_flagged`, `issue.status_changed`, and `notification.new` events.
+- **`other_info` / `other_details` are validated** on create/update against a strict
+  allowlist per entity type (declared in `backend/app/metadata_schemas.py`): unknown keys
+  and wrong types are rejected with `400 VALIDATION_ERROR`; empty metadata is allowed.
+  See the DB doc's "Dynamic Metadata" section for the per-type discriminators and rules.
 
 ---
 
@@ -149,7 +152,7 @@ Authorization: Bearer <jwt>
 | `OrgType` | Press, Hub, DistributionUnit, Vendor |
 | `DeliveryType` | Delivery, Handend |
 | `DeliveryStatus` | Created → Packed → Dispatched → OutForDelivery → Delivered · or · Terminated |
-| `DeliveryItemStatus` | Pending, Confirmed, Discrepancy, Missed |
+| `AllocationStatus` | Pending, Confirmed, Discrepancy, Missed |
 | `IssueStatus` | Open, Assigned, InProgress, Resolved, Escalated |
 | `AssignmentAction` | DRIVER_ASSIGNED, DRIVER_CHANGED, DRIVER_REMOVED, VEHICLE_ASSIGNED, VEHICLE_CHANGED, VEHICLE_REMOVED |
 | `AccessLevel` | READ, WRITE, CONFIRM |
@@ -204,53 +207,135 @@ Authorization: Bearer <jwt>
 | GET | `/products` | List / search |
 | POST | `/products` | Create (production entry) — **Administrator or Press org only** |
 | GET | `/products/{product_id}` | Get |
-| PATCH | `/products/{product_id}` | Update (stock changes restricted) |
+| PATCH | `/products/{product_id}` | Update metadata |
 
-#### Product creation & stock rules
+#### Product Creation & Inventory Rules
 
-**Who may create a product (production guard):**
-- A user whose `role == Administrator`, **or** a user whose organization is of
-  `type == Press`. (Optionally also `Hub`, via the `allow_hub_product_creation`
-  server toggle — default **OFF**.)
-- Everyone else — `DistributionManager`, `Vendor`, `HubOperator` (without the
-  org-type allowance), and any **driver** token — receives **`403`**.
+Products represent catalog/master records only.
 
-**Server-derived, never trusted from the body:**
-- `organization_id` ← the authenticated caller's organization.
-- `created_by` ← the caller's `universal_id`.
-- `created_at` ← server clock.
+A product defines:
 
-A vendor therefore cannot forge a product as belonging to a press.
+- Name
+- SKU
+- Description
+- Metadata
 
-**Stock integrity:**
-- `stocks` is set at creation (the production entry).
-- On `PATCH /products/{id}`, `stocks` may be changed **only** by an `Administrator`
-  or a member of the product's owning **Press** org; any other caller attempting a
-  stock change gets `403`.
-- Routine stock **decreases** flow through the dispatch workflow: when a delivery
-  reaches `Dispatched`, each item's product stock is reduced by its
-  `expected_quantity` (clamped at 0; no auto-restock on later termination).
+Products do not represent available stock.
+
+Available stock is maintained through Product Inventory records.
+
+Server-derived fields:
+
+- organization_id
+- created_by
+- created_at
+
+Products may only be created by:
+
+- Administrator
+- Press organization users
+
+Stock operations are performed through Product Inventory and Delivery workflows.
+
+### Product Inventory
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/inventory` | List inventory |
+| GET | `/inventory/{inventory_id}` | Get inventory record |
+| GET | `/inventory/organization/{org_id}` | Organization inventory |
+| PATCH | `/inventory/{inventory_id}` | Update metadata |
+
+#### Product Inventory Rules
+
+Inventory is the authoritative source of available stock.
+
+Each inventory record belongs to:
+
+- Product
+- Organization
+
+Inventory records track:
+
+- received_stock
+- current_stock
+- status
+
+Inventory may only be consumed through deliveries.
+
+Inventory may only increase through:
+
+- Delivery receipt
+- Administrative adjustment
+
+Example:
+
+Press Inventory
+Current Stock = 10000
+
+Dispatch = 5000
+
+Remaining Stock = 5000
 
 ### Deliveries
 | Method | Path | Summary |
 |---|---|---|
 | GET | `/deliveries` | List / search (access-filtered; status board + 90-day history) |
-| POST | `/deliveries` | Create one movement (items inlinable) |
-| GET | `/deliveries/{id}` | Get (with items) |
+| POST | `/deliveries` | Create one inventory movement between organizations |
+| GET | `/deliveries/{id}` | Get (with allocations) |
 | PATCH | `/deliveries/{id}` | Update mutable fields (409 if frozen) |
 | POST | `/deliveries/{id}/status` | Advance status (user **or** driver JWT) → WS event |
 | POST | `/deliveries/{id}/confirm` | Confirm + quantity check + photo (immutable after) |
 | POST | `/deliveries/{id}/assign` | Assign/change driver/vehicle → assignment log |
-| GET | `/deliveries/{id}/manifest` | Bundle manifest |
+| GET | `/deliveries/{id}/manifest` | Allocation manifest |
 | GET | `/deliveries/{id}/logs` | Per-delivery event log (immutable) |
 | GET | `/deliveries/{id}/assignment-logs` | Driver/vehicle history (immutable) |
 
-### Delivery Items
+### Delivery Allocations
+
 | Method | Path | Summary |
 |---|---|---|
-| GET | `/deliveries/{id}/items` | List items |
-| POST | `/deliveries/{id}/items` | Add item |
-| PATCH | `/delivery-items/{item_id}` | Update quantity/status/note |
+| GET | `/deliveries/{id}/allocations` | List allocations |
+| POST | `/deliveries/{id}/allocations` | Add allocation |
+| PATCH | `/delivery-allocations/{allocation_id}` | Update allocation |
+
+```json
+{
+  "allocation_id": "alloc_001",
+  "delivery_id": "del_001",
+  "inventory_id": "inv_001",
+  "expected_quantity": 5000,
+  "confirmed_quantity": 4980,
+  "status": "Discrepancy"
+}
+```
+
+### Inventory Integrity
+
+When a delivery reaches Dispatched:
+
+- Sender inventory is validated.
+- Sender inventory current_stock is reduced.
+
+When a delivery reaches Delivered:
+
+- Recipient inventory is created or updated.
+- received_stock is increased.
+- current_stock is increased.
+
+Inventory remains the single source of truth for available stock.
+
+Final structure:
+
+Products
+   ↓
+Product Inventory
+   ↓
+Delivery Allocations
+   ↓
+Deliveries
+   ↓
+Inventory Transfer
 
 ### Drivers (operational data; auth separate)
 | Method | Path | Summary |
@@ -306,18 +391,26 @@ A vendor therefore cannot forge a product as belonging to a press.
 
 ## Worked examples
 
-### Create a delivery (Press → Hub) with items
+### Create a delivery (Press → Hub) with allocations
 `POST /deliveries`
 ```json
 {
   "type": "Delivery",
-  "sender":    { "universal_id": "press-uid-001" },
-  "recipient": { "id": "hub-org-007", "type": "ORG" },
+  "sender": {
+    "universal_id": "press-uid-001"
+  },
+  "recipient": {
+    "id": "hub-org-007",
+    "type": "ORG"
+  },
   "sender_address_id": "addr-press-01",
   "recipient_address_id": "addr-hub-07",
   "planned_duration": 45,
-  "items": [
-    { "product_id": "prod-hindu-morning-0618", "expected_quantity": 5000 }
+  "allocations": [
+    {
+      "inventory_id": "inv_press_hindu",
+      "expected_quantity": 5000
+    }
   ]
 }
 ```
@@ -335,10 +428,15 @@ Writes a Delivery Log entry and emits `delivery.status_changed` over WebSocket.
 ```json
 {
   "photo_url": "https://cdn.newstrack.example.com/pod/abc.jpg",
-  "items": [ { "item_id": "item-001", "confirmed_quantity": 4980 } ]
+  "allocations": [
+    {
+      "allocation_id": "alloc_001",
+      "confirmed_quantity": 4980
+    }
+  ]
 }
 ```
-A mismatch vs `expected_quantity` marks the item `Discrepancy` and raises an alert. After this, the record is immutable.
+A mismatch vs `expected_quantity` marks the allocation `Discrepancy` and raises an alert. After this, the record is immutable.
 
 ---
 

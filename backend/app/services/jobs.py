@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import SessionLocal
-from app.models.delivery import Delivery, DeliveryItem
-from app.models.enums import DeliveryItemStatus, DeliveryStatus, IssueLogAction, IssueStatus, NotificationSeverity
+from app.models.delivery import Delivery, DeliveryAllocation
+from app.models.enums import AllocationStatus, DeliveryStatus, IssueLogAction, IssueStatus, NotificationSeverity
 from app.models.issue import Issue
 from app.models.logs import DeliveryLog, IssueLog
 from app.realtime.events import (
@@ -99,12 +99,12 @@ def flag_missed_deliveries(db: Session, grace_min: int, now: datetime | None = N
             continue
         db.add(DeliveryLog(delivery_id=d.id, action="MISSED_FLAGGED",
                            remark="Past planned delivery window."))
-        # Mark still-pending items Missed.
-        for item in db.execute(
-            select(DeliveryItem).where(DeliveryItem.delivery_id == d.id)
+        # Mark still-pending allocations Missed.
+        for alloc in db.execute(
+            select(DeliveryAllocation).where(DeliveryAllocation.delivery_id == d.id)
         ).scalars().all():
-            if item.status == DeliveryItemStatus.Pending:
-                item.status = DeliveryItemStatus.Missed
+            if alloc.status == AllocationStatus.Pending:
+                alloc.status = AllocationStatus.Missed
         for party in {d.sender_id, d.recipient_id}:
             _notify_emit(db, universal_id=party, type="DELIVERY_MISSED",
                          message=f"Delivery {d.id} missed its delivery window.",

@@ -37,7 +37,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { MetadataFields } from '@/components/MetadataFields'
+import { metadataSpec, buildMetadata } from '@/lib/metadataSchemas'
 import type { Vehicle } from '@/types/models'
+
+const DRIVER_SPEC = metadataSpec('driver')
+const VEHICLE_SPEC = metadataSpec('vehicle')
 
 export default function FleetPage() {
   return (
@@ -155,23 +160,27 @@ function VehiclesTab() {
 function CreateDriverDialog() {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ driver_name: '', mobile: '', email: '', password: '' })
+  const [meta, setMeta] = useState<Record<string, string>>({})
   const create = useCreateDriver()
   async function submit() {
+    const other_info = buildMetadata(DRIVER_SPEC, meta)
     await create.mutateAsync({
       driver_name: form.driver_name,
       mobile: form.mobile,
       email: form.email || undefined,
       password: form.password || undefined,
+      other_info: Object.keys(other_info).length ? other_info : undefined,
     })
     setOpen(false)
     setForm({ driver_name: '', mobile: '', email: '', password: '' })
+    setMeta({})
   }
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button>Register driver</Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-auto">
         <DialogHeader>
           <DialogTitle>Register driver</DialogTitle>
         </DialogHeader>
@@ -180,6 +189,11 @@ function CreateDriverDialog() {
           <Field label="Mobile" value={form.mobile} onChange={(v) => setForm({ ...form, mobile: v })} />
           <Field label="Email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} />
           <Field label="Password" type="password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} />
+          <MetadataFields
+            spec={DRIVER_SPEC}
+            values={meta}
+            onChange={(k, v) => setMeta((m) => ({ ...m, [k]: v }))}
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
@@ -199,23 +213,28 @@ function CreateVehicleDialog() {
   const [number, setNumber] = useState('')
   const [type, setType] = useState('3W')
   const [capacity, setCapacity] = useState('')
+  const [meta, setMeta] = useState<Record<string, string>>({})
   const create = useCreateVehicle()
   async function submit() {
+    // Vehicle metadata lives in `other_details` (not other_info).
+    const other_details = buildMetadata(VEHICLE_SPEC, meta)
     await create.mutateAsync({
       vehicle_number: number,
       vehicle_type: type as Vehicle['vehicle_type'],
       capacity: capacity ? Number(capacity) : undefined,
+      other_details: Object.keys(other_details).length ? other_details : undefined,
     })
     setOpen(false)
     setNumber('')
     setCapacity('')
+    setMeta({})
   }
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button>Register vehicle</Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-auto">
         <DialogHeader>
           <DialogTitle>Register vehicle</DialogTitle>
         </DialogHeader>
@@ -235,6 +254,11 @@ function CreateVehicleDialog() {
             </Select>
           </div>
           <Field label="Capacity" type="number" value={capacity} onChange={setCapacity} />
+          <MetadataFields
+            spec={VEHICLE_SPEC}
+            values={meta}
+            onChange={(k, v) => setMeta((m) => ({ ...m, [k]: v }))}
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>

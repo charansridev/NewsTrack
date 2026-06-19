@@ -10,6 +10,7 @@ from app.models.driver import Driver
 from app.models.enums import UserRole
 from app.models.user import User
 from app.models.vehicle import Vehicle
+from app.metadata_schemas import validate_other_info
 from app.schemas.vehicle import VehicleCreate, VehicleOut, VehicleUpdate
 
 router = APIRouter(tags=["Vehicles"])
@@ -50,6 +51,7 @@ def register_vehicle(
     db: Session = Depends(get_db),
     _mgr: User = Depends(require_roles(*_MANAGERS)),
 ):
+    validate_other_info("vehicle", body.vehicle_type, body.other_details)
     _validate_driver(db, body.current_driver)
     vehicle = Vehicle(
         vehicle_number=body.vehicle_number,
@@ -82,6 +84,9 @@ def update_vehicle(
 ):
     vehicle = _get_or_404(db, vehicle_id)
     data = body.model_dump(exclude_unset=True)
+    if "other_details" in data:
+        vtype = data.get("vehicle_type") or vehicle.vehicle_type
+        validate_other_info("vehicle", vtype, data["other_details"])
     if "current_driver" in data:
         _validate_driver(db, data["current_driver"])
     for field, value in data.items():

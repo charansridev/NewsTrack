@@ -5,6 +5,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, require_roles
+from app.metadata_schemas import validate_other_info
 from app.services.analytics import org_performance
 from app.core.errors import Conflict, NotFound
 from app.core.identity import create_organization
@@ -54,6 +55,7 @@ def register_organization(
     db: Session = Depends(get_db),
     _admin: User = Depends(require_roles(UserRole.Administrator)),
 ):
+    validate_other_info("organization", body.type.value, body.other_info)
     org = create_organization(
         db,
         name=body.name,
@@ -86,7 +88,13 @@ def update_organization(
     _admin: User = Depends(require_roles(UserRole.Administrator)),
 ):
     org = _get_or_404(db, org_id)
-    for field, value in body.model_dump(exclude_unset=True).items():
+    data = body.model_dump(exclude_unset=True)
+    if "other_info" in data:
+        # Validate against the effective type (new type if changing, else current).
+        new_type = data.get("type") or org.type
+        type_value = new_type.value if hasattr(new_type, "value") else str(new_type)
+        validate_other_info("organization", type_value, data["other_info"])
+    for field, value in data.items():
         setattr(org, field, value)
     db.commit()
     db.refresh(org)

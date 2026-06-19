@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.models.enums import (
     AccessLevel,
-    DeliveryItemStatus,
+    AllocationStatus,
     DeliveryStatus,
     DeliveryType,
     EntityType,
@@ -12,35 +12,32 @@ from app.models.enums import (
 from app.schemas.references import ActorInput, ActorRef
 
 
-# ── Delivery items ────────────────────────────────────────────────────────────
-class DeliveryItemIn(BaseModel):
-    product_id: str
+# ── Delivery allocations (a quantity drawn from a sender inventory record) ─────
+class AllocationIn(BaseModel):
+    inventory_id: str
     expected_quantity: int
 
 
-class DeliveryItemAdd(BaseModel):
-    product_id: str
+class AllocationAdd(BaseModel):
+    inventory_id: str
     expected_quantity: int
-    note: str | None = None
 
 
-class DeliveryItemUpdate(BaseModel):
+class AllocationUpdate(BaseModel):
     expected_quantity: int | None = None
     confirmed_quantity: int | None = None
-    status: DeliveryItemStatus | None = None
-    note: str | None = None
+    status: AllocationStatus | None = None
 
 
-class DeliveryItemOut(BaseModel):
+class AllocationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: str
-    product_id: str
+    allocation_id: str
+    inventory_id: str
     delivery_id: str
     expected_quantity: int
     confirmed_quantity: int | None = None
-    status: DeliveryItemStatus
-    note: str | None = None
+    status: AllocationStatus
 
 
 # ── Delivery ──────────────────────────────────────────────────────────────────
@@ -53,7 +50,7 @@ class DeliveryCreate(BaseModel):
     recipient_address_id: str | None = None
     planned_duration: int | None = None
     note: str | None = None
-    items: list[DeliveryItemIn] = []
+    allocations: list[AllocationIn] = []
 
 
 class DeliveryUpdate(BaseModel):
@@ -86,7 +83,7 @@ class DeliveryOut(BaseModel):
     has_issue: bool = False
     issue_count: int = 0
     note: str | None = None
-    items: list[DeliveryItemOut] = []
+    allocations: list[AllocationOut] = []
 
 
 # ── Action payloads ─────────────────────────────────────────────────────────
@@ -101,14 +98,14 @@ class AssignIn(BaseModel):
     remark: str | None = None
 
 
-class ConfirmItemIn(BaseModel):
-    item_id: str
+class ConfirmAllocationIn(BaseModel):
+    allocation_id: str
     confirmed_quantity: int
 
 
 class ConfirmIn(BaseModel):
     photo_url: str | None = None
-    items: list[ConfirmItemIn] = []
+    allocations: list[ConfirmAllocationIn] = []
 
 
 # ── Logs ──────────────────────────────────────────────────────────────────────

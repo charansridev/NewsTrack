@@ -27,7 +27,10 @@ def world(client, admin, db):
     a_hub = client.post("/v1/addresses", headers=h,
                        json={"address": "9 Hub Ave"}).json()
     product = client.post("/v1/products", headers=h,
-                         json={"name": "The Hindu - Morning", "stocks": 9000}).json()
+                         json={"name": "The Hindu - Morning"}).json()
+    inv = client.post("/v1/inventory", headers=h, json={
+        "organization_id": press["id"], "product_id": product["product_id"],
+        "set_quantity": 1000000}).json()
 
     d1 = Driver(driver_name="Ravi", mobile="9000000001", is_available=True,
                 password_hash=hash_password("d1"))
@@ -38,7 +41,8 @@ def world(client, admin, db):
     db.commit()
     return {
         "h": h, "press": press, "hub": hub, "a_press": a_press, "a_hub": a_hub,
-        "product": product, "d1": d1.driver_id, "d2": d2.driver_id, "veh": veh.vehicle_id,
+        "product": product, "inv_id": inv["inventory_id"],
+        "d1": d1.driver_id, "d2": d2.driver_id, "veh": veh.vehicle_id,
     }
 
 
@@ -50,7 +54,7 @@ def _create_delivery(client, w):
         "sender_address_id": w["a_press"]["id"],
         "recipient_address_id": w["a_hub"]["id"],
         "planned_duration": 45,
-        "items": [{"product_id": w["product"]["product_id"], "expected_quantity": 5000}],
+        "allocations": [{"inventory_id": w["inv_id"], "expected_quantity": 5000}],
     })
 
 
@@ -68,8 +72,8 @@ def test_full_lifecycle(client, world):
     assert d["recipient"]["name"] == "Hyderabad Hub"
     assert d["sender_address_snapshot"] == "1 Press Rd"      # immutable snapshot
     assert d["recipient_address_snapshot"] == "9 Hub Ave"
-    assert len(d["items"]) == 1 and d["items"][0]["status"] == "Pending"
-    item_id = d["items"][0]["id"]
+    assert len(d["allocations"]) == 1 and d["allocations"][0]["status"] == "Pending"
+    item_id = d["allocations"][0]["allocation_id"]
 
     # ── Advance statuses (each writes a log) ─────────────────────────────────
     for nxt in ("Packed", "Dispatched", "OutForDelivery"):
@@ -92,13 +96,13 @@ def test_full_lifecycle(client, world):
     # ── Confirm with a quantity mismatch -> Discrepancy ─────────────────────
     rr = client.post(f"/v1/deliveries/{did}/confirm", headers=h, json={
         "photo_url": "https://cdn/pod.jpg",
-        "items": [{"item_id": item_id, "confirmed_quantity": 4980}],
+        "allocations": [{"allocation_id": item_id, "confirmed_quantity": 4980}],
     })
     assert rr.status_code == 200, rr.text
     cd = rr.json()
     assert cd["confirmed_at"] is not None and cd["photo_url"].endswith("pod.jpg")
-    assert cd["items"][0]["status"] == "Discrepancy"
-    assert cd["items"][0]["confirmed_quantity"] == 4980
+    assert cd["allocations"][0]["status"] == "Discrepancy"
+    assert cd["allocations"][0]["confirmed_quantity"] == 4980
 
     # ── Freeze: advance to Delivered, then mutations are rejected ───────────
     assert client.post(f"/v1/deliveries/{did}/status", headers=h,
@@ -108,7 +112,7 @@ def test_full_lifecycle(client, world):
     assert patch.status_code == 409                     # frozen
 
     second_confirm = client.post(f"/v1/deliveries/{did}/confirm", headers=h,
-                                 json={"items": [{"item_id": item_id, "confirmed_quantity": 5000}]})
+                                 json={"allocations": [{"allocation_id": item_id, "confirmed_quantity": 5000}]})
     assert second_confirm.status_code == 409            # already confirmed
 
     # ── Event log captured the whole story ──────────────────────────────────

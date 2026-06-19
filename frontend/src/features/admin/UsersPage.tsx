@@ -31,6 +31,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { MetadataFields } from '@/components/MetadataFields'
+import { metadataSpec, buildMetadata } from '@/lib/metadataSchemas'
 import type { UserRole } from '@/types/models'
 
 const ALL = '__all__'
@@ -111,17 +113,22 @@ function CreateUserDialog() {
     organization_id: '',
     password: '',
   })
+  const [meta, setMeta] = useState<Record<string, string>>({})
   const create = useCreateUser()
+  const spec = metadataSpec('user', form.role)
 
   async function submit() {
+    const other_info = buildMetadata(spec, meta)
     await create.mutateAsync({
       name: form.name,
       email: form.email,
       role: form.role,
       organization_id: form.organization_id,
       password: form.password || undefined,
+      other_info: Object.keys(other_info).length ? other_info : undefined,
     })
     setOpen(false)
+    setMeta({})
   }
 
   return (
@@ -129,7 +136,7 @@ function CreateUserDialog() {
       <DialogTrigger asChild>
         <Button>New user</Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-auto">
         <DialogHeader>
           <DialogTitle>Create user</DialogTitle>
         </DialogHeader>
@@ -144,7 +151,13 @@ function CreateUserDialog() {
           </div>
           <div className="space-y-2">
             <Label>Role</Label>
-            <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v as UserRole })}>
+            <Select
+              value={form.role}
+              onValueChange={(v) => {
+                setForm({ ...form, role: v as UserRole })
+                setMeta({}) // allowed keys differ per role
+              }}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -183,6 +196,12 @@ function CreateUserDialog() {
               onChange={(e) => setForm({ ...form, password: e.target.value })}
             />
           </div>
+          <MetadataFields
+            spec={spec}
+            values={meta}
+            onChange={(k, v) => setMeta((m) => ({ ...m, [k]: v }))}
+            title={`${form.role} metadata`}
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.enums import (
     AccessLevel,
-    DeliveryItemStatus,
+    AllocationStatus,
     DeliveryStatus,
     DeliveryType,
     EntityType,
@@ -83,31 +83,33 @@ class Delivery(Base):
     issue_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    items: Mapped[list["DeliveryItem"]] = relationship(
+    allocations: Mapped[list["DeliveryAllocation"]] = relationship(
         back_populates="delivery", cascade="all, delete-orphan"
     )
 
 
-class DeliveryItem(Base):
-    __tablename__ = "delivery_items"
+class DeliveryAllocation(Base):
+    """One line of a delivery: a quantity drawn from a specific sender inventory
+    record (``inventory_id``) and moved to the recipient."""
 
-    id: Mapped[str] = mapped_column(UUIDType, primary_key=True, default=new_uuid)
-    product_id: Mapped[str] = mapped_column(
-        UUIDType, ForeignKey("products.product_id"), nullable=False
+    __tablename__ = "delivery_allocations"
+
+    allocation_id: Mapped[str] = mapped_column(UUIDType, primary_key=True, default=new_uuid)
+    inventory_id: Mapped[str] = mapped_column(
+        UUIDType, ForeignKey("product_inventory.inventory_id"), nullable=False, index=True
     )
     delivery_id: Mapped[str] = mapped_column(
         UUIDType, ForeignKey("deliveries.id"), nullable=False, index=True
     )
     expected_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     confirmed_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    status: Mapped[DeliveryItemStatus] = mapped_column(
-        SAEnum(DeliveryItemStatus, name="delivery_item_status"),
+    status: Mapped[AllocationStatus] = mapped_column(
+        SAEnum(AllocationStatus, name="allocation_status"),
         nullable=False,
-        default=DeliveryItemStatus.Pending,
+        default=AllocationStatus.Pending,
     )
-    note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    delivery: Mapped["Delivery"] = relationship(back_populates="items")
+    delivery: Mapped["Delivery"] = relationship(back_populates="allocations")
 
 
 class DeliveryAccess(Base):

@@ -11,6 +11,7 @@ from app.models.driver import Driver
 from app.models.delivery import Delivery
 from app.models.enums import UserRole
 from app.models.user import User
+from app.metadata_schemas import validate_other_info
 from app.schemas.driver import DriverCreate, DriverOut, DriverUpdate
 from app.services.deliveries import delivery_out
 
@@ -47,6 +48,7 @@ def register_driver(
     db: Session = Depends(get_db),
     _mgr: User = Depends(require_roles(*_MANAGERS)),
 ):
+    validate_other_info("driver", None, body.other_info)
     fields = body.model_dump(exclude={"password"})
     fields["other_info"] = fields.get("other_info") or {}
     driver = Driver(**fields)
@@ -90,6 +92,8 @@ def update_driver(
 ):
     driver = _get_or_404(db, driver_id)
     data = body.model_dump(exclude_unset=True)
+    if "other_info" in data:
+        validate_other_info("driver", None, data["other_info"])
     password = data.pop("password", None)
     if password:
         driver.password_hash = hash_password(password)

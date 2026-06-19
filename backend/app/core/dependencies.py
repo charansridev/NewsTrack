@@ -17,7 +17,6 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.core.errors import Forbidden, NotFound, Unauthorized
 from app.core.security import decode_driver_token, decode_user_token
 from app.database import get_db
@@ -66,23 +65,14 @@ def require_roles(*roles: UserRole):
     return _guard
 
 
-def _product_creator_org_types() -> set[OrgType]:
-    """Org types whose members may create products (besides Administrators)."""
-    types = {OrgType.Press}
-    if settings.allow_hub_product_creation:
-        types.add(OrgType.Hub)
-    return types
-
-
 def require_product_creator(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> User:
     """Guard for production endpoints (e.g. POST /products).
 
-    Permits a caller who is an Administrator, OR whose organization is of a
-    product-creating type (Press; optionally Hub via config). Everyone else
-    — DistributionManager, Vendor, HubOperator outside the allowance, and any
+    Permits a caller who is an Administrator, OR whose organization is of type
+    Press. Everyone else — DistributionManager, Vendor, HubOperator, and any
     driver token (which never resolves as a user) — gets 403.
 
     Reusable across future production endpoints.
@@ -90,9 +80,9 @@ def require_product_creator(
     if user.role == UserRole.Administrator:
         return user
     org = db.get(Organization, user.organization_id)
-    if org is not None and org.type in _product_creator_org_types():
+    if org is not None and org.type == OrgType.Press:
         return user
-    raise Forbidden("Only Administrators or members of a producing organization may do this.")
+    raise Forbidden("Only Administrators or members of a Press organization may do this.")
 
 
 # ── Driver identity ─────────────────────────────────────────────────────────

@@ -7,10 +7,11 @@ info:
 
 
     The data model is intentionally generic. A *bundle* (PRD term) is a **Product**;
-    bundle-specific attributes live in `Product.other_info`. A *route* is **not a stored
-    entity** — it is the derived pair `(sender_address_id, recipient_address_id)` and all
-    route analytics group on that pair. A **Delivery** is one movement of products between
-    exactly two nodes, chained through `parent_delivery_id`.
+    bundle-specific attributes live in `Product.other_info`. Product Inventory is the
+    source of truth for available stock within an organization. A *route* is **not a
+    stored entity** — it is the derived pair `(sender_address_id, recipient_address_id)`
+    and all route analytics group on that pair. A **Delivery** is one movement of
+    inventory between exactly two nodes, chained through `parent_delivery_id`.
 
 
     **Actor references** (`created_by`, `sender_id`, `recipient_id`, `assigned_to`, ...) are
@@ -19,6 +20,12 @@ info:
 
 
     **Authentication** uses two independent JWT systems — one for platform users, one for drivers.
+
+
+    **Dynamic metadata** (`other_info` / `other_details`) is validated on create/update
+    against a strict per-entity-type allowlist: unknown keys and wrong value types are
+    rejected with `400 VALIDATION_ERROR`; empty metadata is allowed. The allowed shape is
+    declared in `backend/app/metadata_schemas.py`.
   contact:
     name: NewsTrack Engineering
 
@@ -42,11 +49,13 @@ tags:
   - name: Universal ID
     description: Polymorphic actor resolution (user or organization)
   - name: Products
-    description: Products / bundles (newspaper editions or batches)
+    description: Product catalog records / bundles (newspaper editions or batches)
+  - name: Product Inventory
+    description: Authoritative available stock records by product and organization
   - name: Deliveries
-    description: Distribution movements, status lifecycle, dispatch, confirmation
-  - name: Delivery Items
-    description: Products and quantities carried within a delivery
+    description: Inventory movements, status lifecycle, dispatch, confirmation
+  - name: Delivery Allocations
+    description: Inventory allocations and quantities attached to a delivery
   - name: Drivers
     description: Driver registry (operational data; auth is separate)
   - name: Vehicles
@@ -252,7 +261,7 @@ components:
       description: >
         Canonical lifecycle. PRD UI stages (Bundled, In Transit, At Hub) map onto these.
 
-    DeliveryItemStatus:
+    AllocationStatus:
       type: string
       enum: [Pending, Confirmed, Discrepancy, Missed]
 
@@ -323,7 +332,9 @@ components:
 
     Product:
       type: object
-      description: A product / bundle. Bundle-specific fields live in other_info.
+      description: >
+        Catalog/master record only. Available stock is maintained through Product
+        Inventory records; products do not represent available stock.
       properties:
         product_id: { type: string, format: uuid, readOnly: true }
         organization_id:
@@ -336,12 +347,7 @@ components:
         created_by: { $ref: '#/components/schemas/ActorRef', readOnly: true }
         created_at: { type: string, format: date-time, readOnly: true }
         name: { type: string }
-        stocks:
-          type: integer
-          description: >
-            Set at creation (the production entry). On PATCH, `stocks` may be
-            changed ONLY by an Administrator or a member of the owning Press org;
-            routine reductions happen via the dispatch workflow, not direct edit.
+        sku: { type: string }
         short_description: { type: string }
         description: { type: string }
         other_info:
@@ -350,17 +356,34 @@ components:
           description: "Bundle metadata, e.g. { bundle_id, packing_staff, destination_hub, edition, publication_date }."
       required: [name]
 
-    DeliveryItem:
+    ProductInventory:
+      type: object
+      description: Authoritative available stock for one product within one organization.
+      properties:
+        inventory_id: { type: string, format: uuid, readOnly: true }
+        product_id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        received_stock: { type: integer, readOnly: true }
+        current_stock: { type: integer, readOnly: true }
+        status: { type: string }
+        other_info:
+          type: object
+          additionalProperties: true
+          description: Inventory metadata. Stock changes flow through delivery receipt or administrative adjustment.
+        created_at: { type: string, format: date-time, readOnly: true }
+        updated_at: { type: string, format: date-time, readOnly: true }
+      required: [product_id, organization_id]
+
+    DeliveryAllocation:
       type: object
       properties:
-        id: { type: string, format: uuid, readOnly: true }
-        product_id: { type: string, format: uuid }
+        allocation_id: { type: string, format: uuid, readOnly: true }
         delivery_id: { type: string, format: uuid, readOnly: true }
+        inventory_id: { type: string, format: uuid }
         expected_quantity: { type: integer }
         confirmed_quantity: { type: integer, nullable: true }
-        status: { $ref: '#/components/schemas/DeliveryItemStatus' }
-        note: { type: string, nullable: true }
-      required: [product_id, expected_quantity]
+        status: { $ref: '#/components/schemas/AllocationStatus' }
+      required: [inventory_id, expected_quantity]
 
     Delivery:
       type: object
@@ -387,9 +410,9 @@ components:
         has_issue: { type: boolean, readOnly: true }
         issue_count: { type: integer, readOnly: true }
         note: { type: string, nullable: true }
-        items:
+        allocations:
           type: array
-          items: { $ref: '#/components/schemas/DeliveryItem' }
+          items: { $ref: '#/components/schemas/DeliveryAllocation' }
       required: [type, sender, recipient]
 
     Driver:
@@ -864,6 +887,7 @@ paths:
     get:
       tags: [Products]
       summary: List products / bundles
+      description: Products are catalog/master records only. Available stock is maintained through Product Inventory.
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
@@ -882,17 +906,15 @@ paths:
                   pagination: { $ref: '#/components/schemas/Pagination' }
     post:
       tags: [Products]
-      summary: Create product / bundle (production entry)
+      summary: Create product / bundle catalog record
       description: >
-        Bundle attributes (bundle_id, packing_staff, destination_hub, edition...) go
-        in other_info.
+        Products represent catalog/master records only. Bundle attributes (bundle_id,
+        packing_staff, destination_hub, edition...) go in other_info. Available stock
+        is maintained through Product Inventory records.
 
 
-        **Authorization (production guard).** Only a caller who is an `Administrator`,
-        OR whose organization is of `type == Press` (optionally also `Hub`, via the
-        `allow_hub_product_creation` server toggle, default OFF), may create a product.
-        All other callers — DistributionManager, Vendor, HubOperator without the
-        org-type allowance, and any driver token — receive `403`.
+        **Authorization.** Products may only be created by an `Administrator` or a
+        Press organization user. All other callers receive `403`.
 
 
         **Server-derived fields** (ignored if sent in the body): `organization_id`
@@ -928,15 +950,11 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [Products]
-      summary: Update product (e.g. adjust stock)
+      summary: Update product metadata
       description: >
-        Updates mutable product fields. **Stock integrity:** changing `stocks` is
-        permitted only for an `Administrator` or a member of the product's owning
-        Press org — any other caller attempting to change `stocks` receives `403`.
-        Routine stock reductions occur through the dispatch workflow (a delivery
-        reaching `Dispatched` decrements each item's product stock by its expected
-        quantity), not by direct edit. `organization_id`, `created_by`, and
-        `created_at` are immutable.
+        Updates mutable product catalog fields and metadata. Products do not represent
+        available stock; stock operations are performed through Product Inventory and
+        Delivery workflows. `organization_id`, `created_by`, and `created_at` are immutable.
       requestBody:
         required: true
         content:
@@ -949,6 +967,76 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Product' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── PRODUCT INVENTORY ──────────────────────
+  /inventory:
+    get:
+      tags: [Product Inventory]
+      summary: List inventory
+      description: Inventory is the authoritative source of available stock.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - { name: product_id, in: query, schema: { type: string, format: uuid } }
+        - { name: organization_id, in: query, schema: { type: string, format: uuid } }
+        - { name: status, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Paginated inventory records.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/ProductInventory' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+
+  /inventory/{inventory_id}:
+    parameters:
+      - { name: inventory_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Product Inventory]
+      summary: Get inventory record
+      responses:
+        '200':
+          description: Inventory record.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductInventory' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Product Inventory]
+      summary: Update inventory metadata
+      description: Metadata update only. Inventory stock may only increase through delivery receipt or administrative adjustment, and may only be consumed through deliveries.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductInventory' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductInventory' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /inventory/organization/{org_id}:
+    parameters:
+      - { name: org_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Product Inventory]
+      summary: Organization inventory
+      responses:
+        '200':
+          description: Inventory records for the organization.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/ProductInventory' } }
         '404': { $ref: '#/components/responses/NotFound' }
 
   # ──────────────────────────────── DELIVERIES ──────────────────────────
@@ -988,11 +1076,11 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
     post:
       tags: [Deliveries]
-      summary: Create delivery (one movement between two nodes)
+      summary: Create delivery (one inventory movement between organizations)
       description: >
         sender/recipient are ActorInput (universal_id or {id,type}). If sender_address_id /
         recipient_address_id are provided, the server stores the ids (for route analytics)
-        AND captures immutable address snapshots. Items may be inlined.
+        AND captures immutable address snapshots. Inventory allocations may be inlined.
       requestBody:
         required: true
         content:
@@ -1009,13 +1097,13 @@ paths:
                 recipient_address_id: { type: string, format: uuid, nullable: true }
                 planned_duration: { type: integer }
                 note: { type: string }
-                items:
+                allocations:
                   type: array
                   items:
                     type: object
-                    required: [product_id, expected_quantity]
+                    required: [inventory_id, expected_quantity]
                     properties:
-                      product_id: { type: string, format: uuid }
+                      inventory_id: { type: string, format: uuid }
                       expected_quantity: { type: integer }
       responses:
         '201':
@@ -1031,7 +1119,7 @@ paths:
       - { name: delivery_id, in: path, required: true, schema: { type: string, format: uuid } }
     get:
       tags: [Deliveries]
-      summary: Get delivery (with items)
+      summary: Get delivery (with allocations)
       responses:
         '200':
           description: Delivery.
@@ -1072,8 +1160,11 @@ paths:
       description: >
         Transitions follow Created → Packed → Dispatched → OutForDelivery → Delivered, or
         Terminated from any non-terminal state. Each transition writes a Delivery Log entry.
-        Drivers (driver JWT) may set transit statuses; this powers Module 4 real-time updates
-        and emits a `delivery.status_changed` WebSocket event.
+        When a delivery reaches Dispatched, sender inventory is validated and current_stock
+        is reduced. When a delivery reaches Delivered, recipient inventory is created or
+        updated, and received_stock/current_stock are increased. Drivers (driver JWT) may
+        set transit statuses; this powers Module 4 real-time updates and emits a
+        `delivery.status_changed` WebSocket event.
       security:
         - userAuth: []
         - driverAuth: []
@@ -1106,9 +1197,9 @@ paths:
       tags: [Deliveries]
       summary: Confirm delivery (Module 5)
       description: >
-        Records confirmed_by, confirmed_at, optional photo proof, and per-item confirmed
-        quantities. Quantity mismatch flags the item Discrepancy and raises an alert.
-        Once confirmed the record is immutable (audit trail).
+        Records confirmed_by, confirmed_at, optional photo proof, and per-allocation
+        confirmed quantities. Quantity mismatch flags the allocation Discrepancy and
+        raises an alert. Once confirmed the record is immutable (audit trail).
       security:
         - userAuth: []
         - driverAuth: []
@@ -1120,13 +1211,13 @@ paths:
               type: object
               properties:
                 photo_url: { type: string }
-                items:
+                allocations:
                   type: array
                   items:
                     type: object
-                    required: [item_id, confirmed_quantity]
+                    required: [allocation_id, confirmed_quantity]
                     properties:
-                      item_id: { type: string, format: uuid }
+                      allocation_id: { type: string, format: uuid }
                       confirmed_quantity: { type: integer }
       responses:
         '200':
@@ -1173,8 +1264,8 @@ paths:
       - { name: delivery_id, in: path, required: true, schema: { type: string, format: uuid } }
     get:
       tags: [Deliveries]
-      summary: Bundle manifest for a delivery
-      description: All delivery items (bundles + quantities) on this delivery. Module 2 manifest view.
+      summary: Allocation manifest for a delivery
+      description: All inventory allocations and quantities on this delivery. Module 2 manifest view.
       responses:
         '200':
           description: Manifest.
@@ -1185,7 +1276,7 @@ paths:
                 properties:
                   delivery_id: { type: string, format: uuid }
                   vehicle_id: { type: string, format: uuid, nullable: true }
-                  items: { type: array, items: { $ref: '#/components/schemas/DeliveryItem' } }
+                  allocations: { type: array, items: { $ref: '#/components/schemas/DeliveryAllocation' } }
 
   /deliveries/{delivery_id}/logs:
     parameters:
@@ -1219,55 +1310,55 @@ paths:
                 properties:
                   data: { type: array, items: { $ref: '#/components/schemas/DeliveryAssignmentLog' } }
 
-  # ───────────────────────────── DELIVERY ITEMS ─────────────────────────
-  /deliveries/{delivery_id}/items:
+  # ─────────────────────────── DELIVERY ALLOCATIONS ─────────────────────
+  /deliveries/{delivery_id}/allocations:
     parameters:
       - { name: delivery_id, in: path, required: true, schema: { type: string, format: uuid } }
     get:
-      tags: [Delivery Items]
-      summary: List items on a delivery
+      tags: [Delivery Allocations]
+      summary: List allocations on a delivery
       responses:
         '200':
-          description: Items.
+          description: Allocations.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  data: { type: array, items: { $ref: '#/components/schemas/DeliveryItem' } }
+                  data: { type: array, items: { $ref: '#/components/schemas/DeliveryAllocation' } }
     post:
-      tags: [Delivery Items]
-      summary: Add item to delivery
+      tags: [Delivery Allocations]
+      summary: Add allocation to delivery
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/DeliveryItem' }
+            schema: { $ref: '#/components/schemas/DeliveryAllocation' }
       responses:
         '201':
           description: Created.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/DeliveryItem' }
+              schema: { $ref: '#/components/schemas/DeliveryAllocation' }
         '409': { $ref: '#/components/responses/Conflict' }
 
-  /delivery-items/{item_id}:
+  /delivery-allocations/{allocation_id}:
     parameters:
-      - { name: item_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: allocation_id, in: path, required: true, schema: { type: string, format: uuid } }
     patch:
-      tags: [Delivery Items]
-      summary: Update item (quantity / status / note)
+      tags: [Delivery Allocations]
+      summary: Update allocation
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/DeliveryItem' }
+            schema: { $ref: '#/components/schemas/DeliveryAllocation' }
       responses:
         '200':
           description: Updated.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/DeliveryItem' }
+              schema: { $ref: '#/components/schemas/DeliveryAllocation' }
         '409': { $ref: '#/components/responses/Conflict' }
 
   # ──────────────────────────────── DRIVERS ─────────────────────────────

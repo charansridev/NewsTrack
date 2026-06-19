@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models.enums import UserRole
 from app.models.organization import Organization
 from app.models.user import User
+from app.metadata_schemas import validate_other_info
 from app.schemas.user import UserCreate, UserOut, UserUpdate
 
 router = APIRouter(tags=["Users"])
@@ -52,6 +53,7 @@ def create_user_endpoint(
 ):
     if db.get(Organization, body.organization_id) is None:
         raise BadRequest("organization_id does not reference an existing organization.")
+    validate_other_info("user", body.role.value, body.other_info)
     fields = body.model_dump(exclude={"password"})
     fields["other_info"] = fields.get("other_info") or {}
     if body.password:
@@ -80,6 +82,10 @@ def update_user(
 ):
     user = _get_or_404(db, user_id)
     data = body.model_dump(exclude_unset=True)
+    if "other_info" in data:
+        new_role = data.get("role") or user.role
+        role_value = new_role.value if hasattr(new_role, "value") else str(new_role)
+        validate_other_info("user", role_value, data["other_info"])
     password = data.pop("password", None)
     if password:
         user.password_hash = hash_password(password)

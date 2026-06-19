@@ -1,8 +1,9 @@
 """Importing this package registers every ORM model on ``Base.metadata``."""
 
 from app.models.address import Address
-from app.models.delivery import Delivery, DeliveryAccess, DeliveryItem
+from app.models.delivery import Delivery, DeliveryAccess, DeliveryAllocation
 from app.models.driver import Driver
+from app.models.inventory import ProductInventory
 from app.models.issue import Issue
 from app.models.logs import DeliveryAssignmentLog, DeliveryLog, IssueLog
 from app.models.notification import Notification
@@ -16,10 +17,11 @@ __all__ = [
     "Address",
     "Delivery",
     "DeliveryAccess",
-    "DeliveryItem",
+    "DeliveryAllocation",
     "DeliveryAssignmentLog",
     "DeliveryLog",
     "Driver",
+    "ProductInventory",
     "Issue",
     "IssueLog",
     "Notification",

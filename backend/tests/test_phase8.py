@@ -21,14 +21,17 @@ def world(client, admin):
     h = admin["headers"]
     press = client.post("/v1/organizations", headers=h, json={"name": "Press", "type": "Press"}).json()
     hub = client.post("/v1/organizations", headers=h, json={"name": "Hub", "type": "Hub"}).json()
-    product = client.post("/v1/products", headers=h, json={"name": "Daily", "stocks": 9000}).json()
+    product = client.post("/v1/products", headers=h, json={"name": "Daily"}).json()
+    inv = client.post("/v1/inventory", headers=h, json={
+        "organization_id": press["id"], "product_id": product["product_id"],
+        "set_quantity": 1000000}).json()
     driver = client.post("/v1/drivers", headers=h, json={
         "driver_name": "Ravi", "mobile": "9700000001", "password": "ravi"}).json()
     did = client.post("/v1/deliveries", headers=h, json={
         "type": "Delivery",
         "sender": {"universal_id": press["universal_id"]},
         "recipient": {"universal_id": hub["universal_id"]},
-        "items": [{"product_id": product["product_id"], "expected_quantity": 1000}],
+        "allocations": [{"inventory_id": inv["inventory_id"], "expected_quantity": 1000}],
     }).json()["id"]
     client.post(f"/v1/deliveries/{did}/assign", headers=h, json={"driver_id": driver["driver_id"]})
     return {"h": h, "press": press, "hub": hub, "did": did}

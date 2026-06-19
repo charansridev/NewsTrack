@@ -47,11 +47,19 @@ DELIVERY_FORWARD_ORDER = [
 DELIVERY_TERMINAL_STATES = {DeliveryStatus.Delivered, DeliveryStatus.Terminated}
 
 
-class DeliveryItemStatus(str, enum.Enum):
+class AllocationStatus(str, enum.Enum):
     Pending = "Pending"
     Confirmed = "Confirmed"
     Discrepancy = "Discrepancy"
     Missed = "Missed"
+
+
+class InventoryStatus(str, enum.Enum):
+    Available = "Available"
+    Reserved = "Reserved"
+    LowStock = "LowStock"
+    OutOfStock = "OutOfStock"
+    Archived = "Archived"
 
 
 class IssueStatus(str, enum.Enum):

@@ -11,6 +11,7 @@ from app.api import (
     auth,
     deliveries,
     drivers,
+    inventory,
     issues,
     notifications,
     organizations,
@@ -76,6 +77,7 @@ app.include_router(products.router, prefix=V1)
 app.include_router(deliveries.router, prefix=V1)
 app.include_router(drivers.router, prefix=V1)
 app.include_router(vehicles.router, prefix=V1)
+app.include_router(inventory.router, prefix=V1)
 app.include_router(issues.router, prefix=V1)
 app.include_router(notifications.router, prefix=V1)
 app.include_router(analytics.router, prefix=V1)

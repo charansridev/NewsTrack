@@ -36,10 +36,9 @@ export default function DriverDeliveryDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const hasToken = Boolean(tokenStore.getDriverAccess())
 
-  if (!tokenStore.getDriverAccess()) return <Navigate to="/driver/login" replace />
-
-  const { data: delivery, isLoading } = useDriverDelivery(id)
+  const { data: delivery, isLoading } = useDriverDelivery(hasToken ? id : undefined)
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['driver', 'deliveries'] })
 
@@ -54,6 +53,7 @@ export default function DriverDeliveryDetailPage() {
     onError: (e) => toast.error(e instanceof ApiClientError ? e.message : 'Could not update status.'),
   })
 
+  if (!hasToken) return <Navigate to="/driver/login" replace />
   if (isLoading) return <div className="mx-auto max-w-md p-4"><Skeleton className="h-60 w-full" /></div>
   if (!delivery)
     return (

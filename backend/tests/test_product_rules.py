@@ -1,9 +1,8 @@
-"""Product creation + stock-integrity rules.
+"""Product creation rules (products are catalog-only; stock lives in inventory).
 
 - Only Administrators or members of a Press org may create products.
 - organization_id / created_by / created_at are server-derived (un-forgeable).
-- stocks may be PATCHed only by an Administrator or the owning Press.
-- Dispatching a delivery decrements product stock by expected quantity.
+Stock movement is covered in test_inventory.py.
 """
 
 import pytest
@@ -48,7 +47,7 @@ def test_only_admin_or_press_can_create(client, admin, orgs_and_users):
 
     # Press-org user: allowed; org is the Press.
     ph = _login(client, "press@x.com", "p")
-    r = client.post("/v1/products", headers=ph, json={"name": "Press Prod", "stocks": 5000})
+    r = client.post("/v1/products", headers=ph, json={"name": "Press Prod", "sku": "PP-1"})
     assert r.status_code == 201
     assert r.json()["organization_id"] == o["press"]["id"]
 
@@ -70,48 +69,3 @@ def test_ownership_cannot_be_forged(client, orgs_and_users):
     assert r.status_code == 201
     # Stayed the Press org, not the injected vendor org.
     assert r.json()["organization_id"] == orgs_and_users["press"]["id"]
-
-
-def test_stock_patch_only_admin_or_owning_press(client, admin, orgs_and_users):
-    o = orgs_and_users
-    ph = _login(client, "press@x.com", "p")
-    pid = client.post("/v1/products", headers=ph, json={"name": "P", "stocks": 1000}).json()["product_id"]
-
-    # Vendor cannot adjust stock.
-    vh = _login(client, "vendor@x.com", "p")
-    assert client.patch(f"/v1/products/{pid}", headers=vh, json={"stocks": 9999}).status_code == 403
-
-    # Owning Press can.
-    assert client.patch(f"/v1/products/{pid}", headers=ph, json={"stocks": 1200}).status_code == 200
-
-    # Administrator can.
-    assert client.patch(f"/v1/products/{pid}", headers=o["h"], json={"stocks": 800}).status_code == 200
-
-    # A no-op stocks value (unchanged) by a vendor is allowed (not a change).
-    assert client.patch(f"/v1/products/{pid}", headers=vh, json={"stocks": 800}).status_code == 200
-
-    # Non-stocks fields are not gated by this rule.
-    assert client.patch(f"/v1/products/{pid}", headers=ph,
-                        json={"short_description": "updated"}).status_code == 200
-
-
-def test_dispatch_decrements_stock(client, admin, orgs_and_users):
-    o = orgs_and_users
-    h = o["h"]
-    ph = _login(client, "press@x.com", "p")
-    product = client.post("/v1/products", headers=ph, json={"name": "Edition", "stocks": 5000}).json()
-    pid = product["product_id"]
-
-    did = client.post("/v1/deliveries", headers=h, json={
-        "type": "Delivery",
-        "sender": {"universal_id": o["press"]["universal_id"]},
-        "recipient": {"universal_id": o["hub"]["universal_id"]},
-        "items": [{"product_id": pid, "expected_quantity": 1200}],
-    }).json()["id"]
-
-    client.post(f"/v1/deliveries/{did}/status", headers=h, json={"status": "Packed"})
-    # Stock unchanged until dispatch.
-    assert client.get(f"/v1/products/{pid}", headers=h).json()["stocks"] == 5000
-
-    client.post(f"/v1/deliveries/{did}/status", headers=h, json={"status": "Dispatched"})
-    assert client.get(f"/v1/products/{pid}", headers=h).json()["stocks"] == 3800  # 5000 - 1200

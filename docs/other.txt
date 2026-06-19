@@ -1,0 +1,11 @@
+Platform users — POST /v1/auth/login (email + password)
+Role	Email	Password
+Administrator	admin@nt.example	admin-pass
+DistributionManager	manager@nt.example	manager-pass
+HubOperator	operator@nt.example	operator-pass
+Vendor	vendor@nt.example	vendor-pass
+HubOperator (in Press org → can create products)	press@nt.example	press-pass
+Drivers — POST /v1/driver/auth/login (mobile + password)
+Name	Mobile	Password
+Ravi Kumar	9800000001	driver-pass
+Sita Devi	9800000002	driver-pass

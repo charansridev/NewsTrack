@@ -19,16 +19,18 @@ from app.core.identity import create_organization, create_user
 from app.core.security import hash_password
 from app.database import Base, SessionLocal, engine
 from app.models.address import Address
-from app.models.delivery import Delivery, DeliveryItem
+from app.models.delivery import Delivery, DeliveryAllocation
 from app.models.driver import Driver
 from app.models.enums import (
-    DeliveryItemStatus,
+    AllocationStatus,
     DeliveryStatus,
     DeliveryType,
+    InventoryStatus,
     IssueStatus,
     OrgType,
     UserRole,
 )
+from app.models.inventory import ProductInventory
 from app.models.issue import Issue
 from app.models.logs import DeliveryLog, IssueLog
 from app.models.product import Product
@@ -102,16 +104,38 @@ def seed(db) -> dict:
     db.add_all([*drivers, *vehicles])
     db.flush()
 
-    # ── Products (bundles) created by the press ────────────────────────────
+    # ── Products: catalog/master records only (no stock here) ──────────────
     products = []
     for i in range(6):
         pub = (datetime.now(timezone.utc).date() - timedelta(days=i)).isoformat()
         products.append(Product(
             organization_id=press.id, created_by=press_user.universal_id,
-            name=f"The Hindu - Morning - {pub}", stocks=100000,
+            name=f"The Hindu - Morning - {pub}", sku=f"HIND-MORN-{pub}",
             other_info={"edition": "Morning", "language": "English", "publication_date": pub},
         ))
     db.add_all(products)
+    db.flush()
+
+    # ── Product Inventory: the authoritative stock ledger (one row per org+product) ──
+    inv = {}  # (org_id, product_id) -> ProductInventory
+
+    def stock(org_id, prod, qty):
+        row = ProductInventory(
+            organization_id=org_id, product_id=prod.product_id,
+            received_stock=qty, current_stock=qty, status=InventoryStatus.Available,
+        )
+        db.add(row)
+        inv[(org_id, prod.product_id)] = row
+        return row
+
+    for prod in products:
+        stock(press.id, prod, 1_000_000)                       # press production stock
+    for hub in hubs:
+        for prod in products:
+            stock(hub.id, prod, RNG.choice([20000, 30000, 50000]))
+    for vendor in vendors[:5]:
+        for prod in products[:3]:
+            stock(vendor.id, prod, RNG.choice([1000, 2000, 3000]))
     db.flush()
 
     # ── Routes = address pairs (press->hub, hub->vendor): >=5 ───────────────
@@ -123,6 +147,9 @@ def seed(db) -> dict:
     # -> 6 distinct routes
 
     hub_uid = {hub_addrs[i].id: hubs[i].universal_id for i in range(3)}
+    org_by_addr = {press_addr.id: press.id}
+    for i in range(3):
+        org_by_addr[hub_addrs[i].id] = hubs[i].id
 
     # ── 30 days of historical deliveries ───────────────────────────────────
     now = datetime.now(timezone.utc)
@@ -167,17 +194,19 @@ def seed(db) -> dict:
             db.flush()
 
             qty = RNG.choice([1000, 2000, 5000])
-            item = DeliveryItem(
-                delivery_id=d.id, product_id=RNG.choice(products).product_id,
-                expected_quantity=qty,
-                status=DeliveryItemStatus.Pending,
+            sender_org_id = org_by_addr[s_addr.id]
+            prod = RNG.choice(products)
+            inv_row = inv[(sender_org_id, prod.product_id)]   # sender always stocked
+            alloc = DeliveryAllocation(
+                delivery_id=d.id, inventory_id=inv_row.inventory_id,
+                expected_quantity=qty, status=AllocationStatus.Pending,
             )
             if d.status == DeliveryStatus.Delivered:
                 confirmed = qty if RNG.random() < 0.8 else qty - RNG.randint(10, 100)
-                item.confirmed_quantity = confirmed
-                item.status = (DeliveryItemStatus.Confirmed if confirmed == qty
-                               else DeliveryItemStatus.Discrepancy)
-            db.add(item)
+                alloc.confirmed_quantity = confirmed
+                alloc.status = (AllocationStatus.Confirmed if confirmed == qty
+                                else AllocationStatus.Discrepancy)
+            db.add(alloc)
             db.add(DeliveryLog(delivery_id=d.id, action=f"STATUS_{d.status.value}",
                               user_id=manager.id, timestamp=d.created_at))
             deliveries.append(d)

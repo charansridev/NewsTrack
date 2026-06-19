@@ -46,7 +46,7 @@ export function DriverAuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({ driver, isAuthenticated: Boolean(tokenStore.getDriverAccess()), login, logout }),
-    [driver],
+    [driver, login, logout],
   )
 
   return <DriverAuthContext.Provider value={value}>{children}</DriverAuthContext.Provider>

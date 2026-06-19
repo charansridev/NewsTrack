@@ -7,7 +7,7 @@ from app.schemas.references import ActorRef
 
 class ProductCreate(BaseModel):
     name: str
-    stocks: int | None = 0
+    sku: str | None = None
     short_description: str | None = None
     description: str | None = None
     other_info: dict | None = None
@@ -15,13 +15,15 @@ class ProductCreate(BaseModel):
 
 class ProductUpdate(BaseModel):
     name: str | None = None
-    stocks: int | None = None
+    sku: str | None = None
     short_description: str | None = None
     description: str | None = None
     other_info: dict | None = None
 
 
 class ProductOut(BaseModel):
+    """Catalog/master record. Available stock lives in Product Inventory."""
+
     model_config = ConfigDict(from_attributes=True)
 
     product_id: str
@@ -29,7 +31,7 @@ class ProductOut(BaseModel):
     created_by: ActorRef | None = None
     created_at: datetime | None = None
     name: str
-    stocks: int | None = None
+    sku: str | None = None
     short_description: str | None = None
     description: str | None = None
     other_info: dict | None = None

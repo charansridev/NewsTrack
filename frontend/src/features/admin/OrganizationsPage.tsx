@@ -35,6 +35,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { MetadataFields } from '@/components/MetadataFields'
+import { metadataSpec, buildMetadata } from '@/lib/metadataSchemas'
 import type { OrgType } from '@/types/models'
 
 const ALL = '__all__'
@@ -149,19 +151,28 @@ function CreateOrgDialog() {
   const [name, setName] = useState('')
   const [type, setType] = useState<OrgType>('Vendor')
   const [email, setEmail] = useState('')
+  const [meta, setMeta] = useState<Record<string, string>>({})
   const create = useCreateOrganization()
+  const spec = metadataSpec('organization', type)
   async function submit() {
-    await create.mutateAsync({ name, type, email: email || undefined })
+    const other_info = buildMetadata(spec, meta)
+    await create.mutateAsync({
+      name,
+      type,
+      email: email || undefined,
+      other_info: Object.keys(other_info).length ? other_info : undefined,
+    })
     setOpen(false)
     setName('')
     setEmail('')
+    setMeta({})
   }
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button>New organization</Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-auto">
         <DialogHeader>
           <DialogTitle>Register organization</DialogTitle>
         </DialogHeader>
@@ -172,7 +183,13 @@ function CreateOrgDialog() {
           </div>
           <div className="space-y-2">
             <Label>Type</Label>
-            <Select value={type} onValueChange={(v) => setType(v as OrgType)}>
+            <Select
+              value={type}
+              onValueChange={(v) => {
+                setType(v as OrgType)
+                setMeta({}) // allowed keys differ per type
+              }}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -189,6 +206,12 @@ function CreateOrgDialog() {
             <Label>Email</Label>
             <Input value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
+          <MetadataFields
+            spec={spec}
+            values={meta}
+            onChange={(k, v) => setMeta((m) => ({ ...m, [k]: v }))}
+            title={`${type} metadata`}
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>

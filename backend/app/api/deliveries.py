@@ -15,28 +15,28 @@ from app.core.errors import BadRequest, Conflict, NotFound
 from app.core.pagination import PageParams, apply_sort, paginate, page_params
 from app.database import get_db
 from app.models.address import Address
-from app.models.delivery import Delivery, DeliveryAccess, DeliveryItem
+from app.models.delivery import Delivery, DeliveryAccess, DeliveryAllocation
 from app.models.driver import Driver
 from app.models.enums import (
     AccessLevel,
+    AllocationStatus,
     AssignmentAction,
-    DeliveryItemStatus,
     DeliveryStatus,
     UserRole,
 )
+from app.models.inventory import ProductInventory
 from app.models.logs import DeliveryAssignmentLog, DeliveryLog
-from app.models.product import Product
 from app.models.user import User
 from app.schemas.delivery import (
+    AllocationAdd,
+    AllocationOut,
+    AllocationUpdate,
     AssignIn,
     ConfirmIn,
     DeliveryAccessIn,
     DeliveryAccessOut,
     DeliveryAssignmentLogOut,
     DeliveryCreate,
-    DeliveryItemAdd,
-    DeliveryItemOut,
-    DeliveryItemUpdate,
     DeliveryLogOut,
     DeliveryOut,
     DeliveryUpdate,
@@ -44,16 +44,22 @@ from app.schemas.delivery import (
 )
 from app.services.deliveries import (
     access_filter,
+    allocation_out,
     delivery_out,
     ensure_mutable,
     is_frozen,
-    item_out,
     validate_transition,
 )
 from app.realtime.events import (
     emit_assignment_changed,
     emit_confirmed,
     emit_status_changed,
+)
+from app.services.inventory import (
+    credit_receipt,
+    debit,
+    get_by_id,
+    org_id_for_universal,
 )
 from app.services.references import resolve_input_model
 
@@ -68,20 +74,6 @@ def _log(db: Session, delivery_id: str, action: str, actor: Actor, remark: str |
     db.add(DeliveryLog(
         delivery_id=delivery_id, action=action, remark=remark, user_id=actor.actor_log_id
     ))
-
-
-def _decrement_stock_for_dispatch(db: Session, delivery: Delivery) -> None:
-    """On dispatch, reduce each item's product stock by its expected quantity.
-
-    Conservative: stock is clamped at 0 (never negative) and there is no
-    auto-restock on later termination. This is the only routine path that
-    lowers stock — direct PATCH edits do not."""
-    for item in delivery.items:
-        product = db.get(Product, item.product_id)
-        if product is None:
-            continue
-        current = product.stocks or 0
-        product.stocks = max(0, current - (item.expected_quantity or 0))
 
 
 # ─────────────────────────────── core CRUD ────────────────────────────────────
@@ -124,15 +116,34 @@ def create_delivery(
     db.add(delivery)
     db.flush()
 
-    for it in body.items:
-        if db.get(Product, it.product_id) is None:
-            raise BadRequest(f"product_id {it.product_id} does not exist.")
-        db.add(DeliveryItem(
+    # Inventory gate: each allocation must draw from an inventory record that
+    # belongs to the SENDER org and holds enough current_stock.
+    sender_org = org_id_for_universal(db, sender_uid)
+    shortfalls = []
+    for alloc in body.allocations:
+        inv = get_by_id(db, alloc.inventory_id)
+        if inv is None:
+            raise BadRequest(f"inventory_id {alloc.inventory_id} does not exist.")
+        if sender_org is not None and inv.organization_id != sender_org:
+            shortfalls.append({
+                "field": alloc.inventory_id,
+                "message": "Inventory record does not belong to the sender organization.",
+            })
+        elif inv.current_stock < alloc.expected_quantity:
+            shortfalls.append({
+                "field": alloc.inventory_id,
+                "message": f"Insufficient stock: have {inv.current_stock}, "
+                           f"need {alloc.expected_quantity}.",
+            })
+        db.add(DeliveryAllocation(
             delivery_id=delivery.id,
-            product_id=it.product_id,
-            expected_quantity=it.expected_quantity,
-            status=DeliveryItemStatus.Pending,
+            inventory_id=alloc.inventory_id,
+            expected_quantity=alloc.expected_quantity,
+            status=AllocationStatus.Pending,
         ))
+    if shortfalls:
+        raise BadRequest("Sender inventory cannot cover these allocations.",
+                         details=shortfalls)
     _log(db, delivery.id, "CREATED", Actor(kind="user", user=user), "Delivery created")
     db.commit()
     db.refresh(delivery)
@@ -234,13 +245,33 @@ def change_status(
 ):
     d = check_delivery_access(db, actor, delivery_id, AccessLevel.WRITE)
     validate_transition(d.status, body.status)
-    d.status = body.status
     now = _utcnow()
+
     if body.status == DeliveryStatus.Dispatched:
+        # Validate sender stock is still sufficient, then debit each allocation.
+        for alloc in d.allocations:
+            inv = get_by_id(db, alloc.inventory_id)
+            if inv is None or inv.current_stock < alloc.expected_quantity:
+                have = inv.current_stock if inv else 0
+                raise Conflict(
+                    f"Insufficient inventory to dispatch allocation {alloc.allocation_id}: "
+                    f"have {have}, need {alloc.expected_quantity}."
+                )
+        for alloc in d.allocations:
+            debit(db, alloc.inventory_id, alloc.expected_quantity)
         d.dispatched_at = now
-        _decrement_stock_for_dispatch(db, d)
+
     if body.status == DeliveryStatus.Delivered:
+        # Credit the recipient org's inventory for each allocation's product.
+        recipient_org = org_id_for_universal(db, d.recipient_id)
+        if recipient_org is not None:
+            for alloc in d.allocations:
+                inv = get_by_id(db, alloc.inventory_id)
+                if inv is not None:
+                    credit_receipt(db, recipient_org, inv.product_id, alloc.expected_quantity)
         d.delivered_at = now
+
+    d.status = body.status
     if body.status in (DeliveryStatus.Delivered, DeliveryStatus.Terminated):
         d.is_active = False
     _log(db, d.id, f"STATUS_{body.status.value}", actor, body.remark)
@@ -327,17 +358,17 @@ def confirm_delivery(
     if d.status == DeliveryStatus.Terminated:
         raise Conflict("Delivery is terminated and cannot be confirmed.")
 
-    items_by_id = {i.id: i for i in d.items}
+    allocs_by_id = {a.allocation_id: a for a in d.allocations}
     has_discrepancy = False
-    for ci in body.items:
-        item = items_by_id.get(ci.item_id)
-        if item is None:
-            raise BadRequest(f"item_id {ci.item_id} is not on this delivery.")
-        item.confirmed_quantity = ci.confirmed_quantity
-        if ci.confirmed_quantity == item.expected_quantity:
-            item.status = DeliveryItemStatus.Confirmed
+    for ca in body.allocations:
+        alloc = allocs_by_id.get(ca.allocation_id)
+        if alloc is None:
+            raise BadRequest(f"allocation_id {ca.allocation_id} is not on this delivery.")
+        alloc.confirmed_quantity = ca.confirmed_quantity
+        if ca.confirmed_quantity == alloc.expected_quantity:
+            alloc.status = AllocationStatus.Confirmed
         else:
-            item.status = DeliveryItemStatus.Discrepancy
+            alloc.status = AllocationStatus.Discrepancy
             has_discrepancy = True
 
     d.confirmed_by = actor.universal_id  # None for a driver confirmation
@@ -352,7 +383,7 @@ def confirm_delivery(
     return delivery_out(db, d)
 
 
-# ─────────────────────────────── manifest / items ─────────────────────────────
+# ─────────────────────────────── manifest / allocations ───────────────────────
 @router.get("/deliveries/{delivery_id}/manifest")
 def get_manifest(
     delivery_id: str,
@@ -363,61 +394,64 @@ def get_manifest(
     return {
         "delivery_id": d.id,
         "vehicle_id": d.vehicle_id,
-        "items": [item_out(i) for i in sorted(d.items, key=lambda x: x.id)],
+        "allocations": [allocation_out(a) for a in sorted(d.allocations, key=lambda x: x.allocation_id)],
     }
 
 
-@router.get("/deliveries/{delivery_id}/items")
-def list_items(
+@router.get("/deliveries/{delivery_id}/allocations")
+def list_allocations(
     delivery_id: str,
     db: Session = Depends(get_db),
     actor: Actor = Depends(get_current_actor),
 ):
     d = check_delivery_access(db, actor, delivery_id, AccessLevel.READ)
-    return {"data": [item_out(i) for i in sorted(d.items, key=lambda x: x.id)]}
+    return {"data": [allocation_out(a) for a in sorted(d.allocations, key=lambda x: x.allocation_id)]}
 
 
-@router.post("/deliveries/{delivery_id}/items", response_model=DeliveryItemOut, status_code=201)
-def add_item(
+@router.post("/deliveries/{delivery_id}/allocations", response_model=AllocationOut, status_code=201)
+def add_allocation(
     delivery_id: str,
-    body: DeliveryItemAdd,
+    body: AllocationAdd,
     db: Session = Depends(get_db),
     actor: Actor = Depends(get_current_actor),
 ):
     d = check_delivery_access(db, actor, delivery_id, AccessLevel.WRITE)
     ensure_mutable(d)
-    if db.get(Product, body.product_id) is None:
-        raise BadRequest("product_id does not exist.")
-    item = DeliveryItem(
+    inv = get_by_id(db, body.inventory_id)
+    if inv is None:
+        raise BadRequest("inventory_id does not exist.")
+    sender_org = org_id_for_universal(db, d.sender_id)
+    if sender_org is not None and inv.organization_id != sender_org:
+        raise BadRequest("Inventory record does not belong to the sender organization.")
+    alloc = DeliveryAllocation(
         delivery_id=d.id,
-        product_id=body.product_id,
+        inventory_id=body.inventory_id,
         expected_quantity=body.expected_quantity,
-        status=DeliveryItemStatus.Pending,
-        note=body.note,
+        status=AllocationStatus.Pending,
     )
-    db.add(item)
+    db.add(alloc)
     db.commit()
-    db.refresh(item)
-    return item_out(item)
+    db.refresh(alloc)
+    return allocation_out(alloc)
 
 
-@router.patch("/delivery-items/{item_id}", response_model=DeliveryItemOut)
-def update_item(
-    item_id: str,
-    body: DeliveryItemUpdate,
+@router.patch("/delivery-allocations/{allocation_id}", response_model=AllocationOut)
+def update_allocation(
+    allocation_id: str,
+    body: AllocationUpdate,
     db: Session = Depends(get_db),
     actor: Actor = Depends(get_current_actor),
 ):
-    item = db.get(DeliveryItem, item_id)
-    if item is None:
+    alloc = db.get(DeliveryAllocation, allocation_id)
+    if alloc is None:
         raise NotFound("Resource not found.")
-    d = check_delivery_access(db, actor, item.delivery_id, AccessLevel.WRITE)
+    d = check_delivery_access(db, actor, alloc.delivery_id, AccessLevel.WRITE)
     ensure_mutable(d)
     for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(item, field, value)
+        setattr(alloc, field, value)
     db.commit()
-    db.refresh(item)
-    return item_out(item)
+    db.refresh(alloc)
+    return allocation_out(alloc)
 
 
 # ─────────────────────────────── logs ─────────────────────────────────────────

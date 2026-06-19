@@ -26,8 +26,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { MetadataFields } from '@/components/MetadataFields'
+import { metadataSpec, buildMetadata } from '@/lib/metadataSchemas'
 
 const PAGE_SIZE = 25
+const PRODUCT_SPEC = metadataSpec('product')
 
 export default function ProductsPage() {
   const [page, setPage] = useState(1)
@@ -112,20 +115,24 @@ function CreateProductDialog() {
   const [stocks, setStocks] = useState('')
   const [shortDescription, setShortDescription] = useState('')
   const [description, setDescription] = useState('')
+  const [meta, setMeta] = useState<Record<string, string>>({})
   const create = useCreateProduct()
 
   async function submit() {
+    const other_info = buildMetadata(PRODUCT_SPEC, meta)
     await create.mutateAsync({
       name,
       stocks: stocks ? Number(stocks) : undefined,
       short_description: shortDescription || undefined,
       description: description || undefined,
+      other_info: Object.keys(other_info).length ? other_info : undefined,
     })
     setOpen(false)
     setName('')
     setStocks('')
     setShortDescription('')
     setDescription('')
+    setMeta({})
   }
 
   return (
@@ -133,7 +140,7 @@ function CreateProductDialog() {
       <DialogTrigger asChild>
         <Button>New product</Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-auto">
         <DialogHeader>
           <DialogTitle>Create product / bundle</DialogTitle>
           <DialogDescription>
@@ -167,6 +174,12 @@ function CreateProductDialog() {
             <Label htmlFor="p-desc">Description</Label>
             <Textarea id="p-desc" value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
+          <MetadataFields
+            spec={PRODUCT_SPEC}
+            values={meta}
+            onChange={(k, v) => setMeta((m) => ({ ...m, [k]: v }))}
+            title="Bundle metadata"
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>

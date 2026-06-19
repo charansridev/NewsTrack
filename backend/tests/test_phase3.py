@@ -52,7 +52,7 @@ def test_registry_crud_flow(client, admin):
     r = client.post(
         "/v1/products",
         headers=h,
-        json={"name": "The Hindu - Morning - 18 Jun 2026", "stocks": 5000,
+        json={"name": "The Hindu - Morning - 18 Jun 2026", "sku": "HIND-0618",
               "other_info": {"edition": "Morning", "language": "English"}},
     )
     assert r.status_code == 201, r.text
@@ -60,13 +60,14 @@ def test_registry_crud_flow(client, admin):
     pid = product["product_id"]
     assert product["created_by"]["entity_type"] == "USER"
     assert product["created_by"]["name"] == "Root Admin"
+    assert product["sku"] == "HIND-0618"
 
-    assert client.get(f"/v1/products/{pid}", headers=h).json()["stocks"] == 5000
+    assert client.get(f"/v1/products/{pid}", headers=h).json()["sku"] == "HIND-0618"
     assert any(p["product_id"] == pid for p in client.get("/v1/products", headers=h).json()["data"])
 
-    # PATCH stock adjustment.
-    r = client.patch(f"/v1/products/{pid}", headers=h, json={"stocks": 4800})
-    assert r.status_code == 200 and r.json()["stocks"] == 4800
+    # PATCH catalog metadata.
+    r = client.patch(f"/v1/products/{pid}", headers=h, json={"short_description": "morning ed."})
+    assert r.status_code == 200 and r.json()["short_description"] == "morning ed."
 
 
 def test_non_admin_cannot_create_user_or_org(client, admin):
