@@ -4,7 +4,6 @@ import { toast } from 'sonner'
 import { api, ApiClientError } from '@/api/client'
 import type {
   Delivery,
-  DeliveryItem,
   DeliveryLog,
   DeliveryAssignmentLog,
   DeliveryStatus,
@@ -150,7 +149,7 @@ export function useAssign(id: string) {
 
 export interface ConfirmPayload {
   photo_url?: string
-  items?: { item_id: string; confirmed_quantity: number }[]
+  allocations?: { allocation_id: string; confirmed_quantity: number }[]
 }
 
 export function useConfirm(id: string) {
@@ -189,4 +188,4 @@ export function useVehicles() {
   })
 }
 
-export type { Delivery, DeliveryItem }
+export type { Delivery }

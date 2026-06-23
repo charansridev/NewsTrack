@@ -755,7 +755,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List products / bundles */
+        /**
+         * List products / bundles
+         * @description Products are catalog/master records only. Available stock is maintained through Product Inventory.
+         */
         get: {
             parameters: {
                 query?: {
@@ -791,10 +794,10 @@ export interface paths {
         };
         put?: never;
         /**
-         * Create product / bundle (production entry)
-         * @description Bundle attributes (bundle_id, packing_staff, destination_hub, edition...) go in other_info.
+         * Create product / bundle catalog record
+         * @description Products represent catalog/master records only. Bundle attributes (bundle_id, packing_staff, destination_hub, edition...) go in other_info. Available stock is maintained through Product Inventory records.
          *
-         *     **Authorization (production guard).** Only a caller who is an `Administrator`, OR whose organization is of `type == Press` (optionally also `Hub`, via the `allow_hub_product_creation` server toggle, default OFF), may create a product. All other callers — DistributionManager, Vendor, HubOperator without the org-type allowance, and any driver token — receive `403`.
+         *     **Authorization.** Products may only be created by an `Administrator` or a Press organization user. All other callers receive `403`.
          *
          *     **Server-derived fields** (ignored if sent in the body): `organization_id` is taken from the caller's organization, `created_by` from the caller's universal_id, and `created_at` is server-set. A caller therefore cannot forge a product as belonging to another organization.
          */
@@ -869,8 +872,8 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update product (e.g. adjust stock)
-         * @description Updates mutable product fields. **Stock integrity:** changing `stocks` is permitted only for an `Administrator` or a member of the product's owning Press org — any other caller attempting to change `stocks` receives `403`. Routine stock reductions occur through the dispatch workflow (a delivery reaching `Dispatched` decrements each item's product stock by its expected quantity), not by direct edit. `organization_id`, `created_by`, and `created_at` are immutable.
+         * Update product metadata
+         * @description Updates mutable product catalog fields and metadata. Products do not represent available stock; stock operations are performed through Product Inventory and Delivery workflows. `organization_id`, `created_by`, and `created_at` are immutable.
          */
         patch: {
             parameters: {
@@ -900,6 +903,170 @@ export interface paths {
                 404: components["responses"]["NotFound"];
             };
         };
+        trace?: never;
+    };
+    "/inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List inventory
+         * @description Inventory is the authoritative source of available stock.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description 1-based page number. */
+                    page?: components["parameters"]["Page"];
+                    /** @description Items per page. */
+                    page_size?: components["parameters"]["PageSize"];
+                    product_id?: string;
+                    organization_id?: string;
+                    status?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Paginated inventory records. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["ProductInventory"][];
+                            pagination?: components["schemas"]["Pagination"];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/{inventory_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                inventory_id: string;
+            };
+            cookie?: never;
+        };
+        /** Get inventory record */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    inventory_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Inventory record. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProductInventory"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update inventory metadata
+         * @description Metadata update only. Inventory stock may only increase through delivery receipt or administrative adjustment, and may only be consumed through deliveries.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    inventory_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ProductInventory"];
+                };
+            };
+            responses: {
+                /** @description Updated. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProductInventory"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        trace?: never;
+    };
+    "/inventory/organization/{org_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        /** Organization inventory */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    org_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Inventory records for the organization. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["ProductInventory"][];
+                        };
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/deliveries": {
@@ -963,8 +1130,8 @@ export interface paths {
         };
         put?: never;
         /**
-         * Create delivery (one movement between two nodes)
-         * @description sender/recipient are ActorInput (universal_id or {id,type}). If sender_address_id / recipient_address_id are provided, the server stores the ids (for route analytics) AND captures immutable address snapshots. Items may be inlined.
+         * Create delivery (one inventory movement between organizations)
+         * @description sender/recipient are ActorInput (universal_id or {id,type}). If sender_address_id / recipient_address_id are provided, the server stores the ids (for route analytics) AND captures immutable address snapshots. Inventory allocations may be inlined.
          */
         post: {
             parameters: {
@@ -987,9 +1154,9 @@ export interface paths {
                         recipient_address_id?: string | null;
                         planned_duration?: number;
                         note?: string;
-                        items?: {
+                        allocations?: {
                             /** Format: uuid */
-                            product_id: string;
+                            inventory_id: string;
                             expected_quantity: number;
                         }[];
                     };
@@ -1024,7 +1191,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get delivery (with items) */
+        /** Get delivery (with allocations) */
         get: {
             parameters: {
                 query?: never;
@@ -1107,7 +1274,7 @@ export interface paths {
         put?: never;
         /**
          * Advance delivery status
-         * @description Transitions follow Created → Packed → Dispatched → OutForDelivery → Delivered, or Terminated from any non-terminal state. Each transition writes a Delivery Log entry. Drivers (driver JWT) may set transit statuses; this powers Module 4 real-time updates and emits a `delivery.status_changed` WebSocket event.
+         * @description Transitions follow Created → Packed → Dispatched → OutForDelivery → Delivered, or Terminated from any non-terminal state. Each transition writes a Delivery Log entry. When a delivery reaches Dispatched, sender inventory is validated and current_stock is reduced. When a delivery reaches Delivered, recipient inventory is created or updated, and received_stock/current_stock are increased. Drivers (driver JWT) may set transit statuses; this powers Module 4 real-time updates and emits a `delivery.status_changed` WebSocket event.
          */
         post: {
             parameters: {
@@ -1166,7 +1333,7 @@ export interface paths {
         put?: never;
         /**
          * Confirm delivery (Module 5)
-         * @description Records confirmed_by, confirmed_at, optional photo proof, and per-item confirmed quantities. Quantity mismatch flags the item Discrepancy and raises an alert. Once confirmed the record is immutable (audit trail).
+         * @description Records confirmed_by, confirmed_at, optional photo proof, and per-allocation confirmed quantities. Quantity mismatch flags the allocation Discrepancy and raises an alert. Once confirmed the record is immutable (audit trail).
          */
         post: {
             parameters: {
@@ -1181,9 +1348,9 @@ export interface paths {
                 content: {
                     "application/json": {
                         photo_url?: string;
-                        items?: {
+                        allocations?: {
                             /** Format: uuid */
-                            item_id: string;
+                            allocation_id: string;
                             confirmed_quantity: number;
                         }[];
                     };
@@ -1280,8 +1447,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Bundle manifest for a delivery
-         * @description All delivery items (bundles + quantities) on this delivery. Module 2 manifest view.
+         * Allocation manifest for a delivery
+         * @description All inventory allocations and quantities on this delivery. Module 2 manifest view.
          */
         get: {
             parameters: {
@@ -1305,7 +1472,7 @@ export interface paths {
                             delivery_id?: string;
                             /** Format: uuid */
                             vehicle_id?: string | null;
-                            items?: components["schemas"]["DeliveryItem"][];
+                            allocations?: components["schemas"]["DeliveryAllocation"][];
                         };
                     };
                 };
@@ -1403,7 +1570,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/deliveries/{delivery_id}/items": {
+    "/deliveries/{delivery_id}/allocations": {
         parameters: {
             query?: never;
             header?: never;
@@ -1412,7 +1579,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** List items on a delivery */
+        /** List allocations on a delivery */
         get: {
             parameters: {
                 query?: never;
@@ -1424,21 +1591,21 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Items. */
+                /** @description Allocations. */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
-                            data?: components["schemas"]["DeliveryItem"][];
+                            data?: components["schemas"]["DeliveryAllocation"][];
                         };
                     };
                 };
             };
         };
         put?: never;
-        /** Add item to delivery */
+        /** Add allocation to delivery */
         post: {
             parameters: {
                 query?: never;
@@ -1450,7 +1617,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["DeliveryItem"];
+                    "application/json": components["schemas"]["DeliveryAllocation"];
                 };
             };
             responses: {
@@ -1460,7 +1627,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["DeliveryItem"];
+                        "application/json": components["schemas"]["DeliveryAllocation"];
                     };
                 };
                 409: components["responses"]["Conflict"];
@@ -1472,12 +1639,12 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/delivery-items/{item_id}": {
+    "/delivery-allocations/{allocation_id}": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                item_id: string;
+                allocation_id: string;
             };
             cookie?: never;
         };
@@ -1487,19 +1654,19 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update item (quantity / status / note) */
+        /** Update allocation */
         patch: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    item_id: string;
+                    allocation_id: string;
                 };
                 cookie?: never;
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["DeliveryItem"];
+                    "application/json": components["schemas"]["DeliveryAllocation"];
                 };
             };
             responses: {
@@ -1509,7 +1676,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["DeliveryItem"];
+                        "application/json": components["schemas"]["DeliveryAllocation"];
                     };
                 };
                 409: components["responses"]["Conflict"];
@@ -2650,7 +2817,7 @@ export interface components {
          */
         DeliveryStatus: "Created" | "Packed" | "Dispatched" | "OutForDelivery" | "Delivered" | "Terminated";
         /** @enum {string} */
-        DeliveryItemStatus: "Pending" | "Confirmed" | "Discrepancy" | "Missed";
+        AllocationStatus: "Pending" | "Confirmed" | "Discrepancy" | "Missed";
         /** @enum {string} */
         IssueStatus: "Open" | "Assigned" | "InProgress" | "Resolved" | "Escalated";
         /** @enum {string} */
@@ -2710,7 +2877,7 @@ export interface components {
              */
             password?: string;
         };
-        /** @description A product / bundle. Bundle-specific fields live in other_info. */
+        /** @description Catalog/master record only. Available stock is maintained through Product Inventory records; products do not represent available stock. */
         Product: {
             /** Format: uuid */
             readonly product_id?: string;
@@ -2723,8 +2890,7 @@ export interface components {
             /** Format: date-time */
             readonly created_at?: string;
             name: string;
-            /** @description Set at creation (the production entry). On PATCH, `stocks` may be changed ONLY by an Administrator or a member of the owning Press org; routine reductions happen via the dispatch workflow, not direct edit. */
-            stocks?: number;
+            sku?: string;
             short_description?: string;
             description?: string;
             /** @description Bundle metadata, e.g. { bundle_id, packing_staff, destination_hub, edition, publication_date }. */
@@ -2732,17 +2898,36 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        DeliveryItem: {
+        /** @description Authoritative available stock for one product within one organization. */
+        ProductInventory: {
             /** Format: uuid */
-            readonly id?: string;
+            readonly inventory_id?: string;
             /** Format: uuid */
             product_id: string;
             /** Format: uuid */
+            organization_id: string;
+            readonly received_stock?: number;
+            readonly current_stock?: number;
+            status?: string;
+            /** @description Inventory metadata. Stock changes flow through delivery receipt or administrative adjustment. */
+            other_info?: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            readonly created_at?: string;
+            /** Format: date-time */
+            readonly updated_at?: string;
+        };
+        DeliveryAllocation: {
+            /** Format: uuid */
+            readonly allocation_id?: string;
+            /** Format: uuid */
             readonly delivery_id?: string;
+            /** Format: uuid */
+            inventory_id: string;
             expected_quantity: number;
             confirmed_quantity?: number | null;
-            status?: components["schemas"]["DeliveryItemStatus"];
-            note?: string | null;
+            status?: components["schemas"]["AllocationStatus"];
         };
         Delivery: {
             /** Format: uuid */
@@ -2776,7 +2961,7 @@ export interface components {
             readonly has_issue?: boolean;
             readonly issue_count?: number;
             note?: string | null;
-            items?: components["schemas"]["DeliveryItem"][];
+            allocations?: components["schemas"]["DeliveryAllocation"][];
         };
         Driver: {
             /** Format: uuid */

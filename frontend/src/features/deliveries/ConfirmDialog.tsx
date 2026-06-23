@@ -18,19 +18,19 @@ import type { Delivery } from '@/types/models'
 export function ConfirmDialog({ delivery }: { delivery: Delivery }) {
   const [open, setOpen] = useState(false)
   const [photoUrl, setPhotoUrl] = useState('')
-  const items = delivery.items ?? []
+  const allocations = delivery.allocations ?? []
   // Pre-fill confirmed quantity with expected; confirmer adjusts on mismatch.
   const [quantities, setQuantities] = useState<Record<string, number>>(() =>
-    Object.fromEntries(items.map((i) => [i.id!, i.expected_quantity ?? 0])),
+    Object.fromEntries(allocations.map((i) => [i.allocation_id!, i.expected_quantity ?? 0])),
   )
   const confirm = useConfirm(delivery.id!)
 
   async function submit() {
     await confirm.mutateAsync({
       photo_url: photoUrl || undefined,
-      items: items.map((i) => ({
-        item_id: i.id!,
-        confirmed_quantity: quantities[i.id!] ?? 0,
+      allocations: allocations.map((i) => ({
+        allocation_id: i.allocation_id!,
+        confirmed_quantity: quantities[i.allocation_id!] ?? 0,
       })),
     })
     setOpen(false)
@@ -59,28 +59,28 @@ export function ConfirmDialog({ delivery }: { delivery: Delivery }) {
               onChange={(e) => setPhotoUrl(e.target.value)}
             />
           </div>
-          <div className="space-y-3">
-            {items.map((i) => (
-              <div key={i.id} className="grid grid-cols-[1fr_auto] items-center gap-3">
-                <div className="text-sm">
-                  <div className="font-medium">Item {i.product_id?.slice(0, 8)}</div>
-                  <div className="text-muted-foreground">
-                    Expected {formatQty(i.expected_quantity)}
+          <div className="space-y-4 py-4">
+            {allocations.length > 0 ? (
+              allocations.map((i) => (
+                <div key={i.allocation_id} className="grid grid-cols-3 items-center gap-4 text-sm">
+                  <div className="col-span-2 font-mono text-xs">{i.inventory_id?.slice(0, 12)}</div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      className="h-8 text-right"
+                      value={quantities[i.allocation_id!] ?? 0}
+                      onChange={(e) =>
+                        setQuantities({ ...quantities, [i.allocation_id!]: Number(e.target.value) })
+                      }
+                    />
+                    <span className="text-muted-foreground">/ {formatQty(i.expected_quantity)}</span>
                   </div>
                 </div>
-                <Input
-                  type="number"
-                  className="w-32"
-                  value={quantities[i.id!] ?? 0}
-                  onChange={(e) =>
-                    setQuantities((q) => ({ ...q, [i.id!]: Number(e.target.value) }))
-                  }
-                />
-              </div>
-            ))}
-            {items.length === 0 && (
-              <p className="text-sm text-muted-foreground">This delivery has no items.</p>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">No items to confirm.</p>
             )}
+            <div className="space-y-2"></div>
           </div>
         </div>
         <DialogFooter>

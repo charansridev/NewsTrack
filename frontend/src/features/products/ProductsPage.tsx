@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { useProducts, useCreateProduct, useUpdateProduct } from '@/api/products'
+import { useProducts, useCreateProduct } from '@/api/products'
+import { useInventory } from '@/api/inventory'
 import { formatDateTime, formatQty } from '@/lib/format'
 import { PageHeader } from '@/components/PageHeader'
 import { Pagination } from '@/components/Pagination'
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog,
   DialogContent,
@@ -26,85 +27,128 @@ const PAGE_SIZE = 25
 const PRODUCT_SPEC = metadataSpec('product')
 
 export default function ProductsPage() {
-  const [page, setPage] = useState(1)
-  const { data, isLoading } = useProducts({ page, page_size: PAGE_SIZE })
-  const update = useUpdateProduct()
-
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] gap-4">
+    <div className="flex flex-col h-[calc(100vh-140px)] gap-4 pb-4">
       <PageHeader
-        title="Products"
-        description="Bundles / editions. Stock is set at production and reduced on dispatch."
+        title="Products & Inventory"
+        description="Catalog of bundles / editions and authoritative inventory stock levels."
         actions={<CreateProductDialog />}
       />
-      <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col flex-1 min-h-0">
-        {/* Table Header */}
-        <div className="grid grid-cols-[2fr_1fr_2fr_auto] text-xs font-medium text-muted-foreground pb-4 border-b border-border/50">
-          <div>Name</div>
-          <div className="text-right">Stock</div>
-          <div className="pl-6">Created</div>
-          <div className="w-48 text-right">Adjust stock</div>
-        </div>
-
-        {/* Table List */}
-        <div className="flex flex-col flex-1 overflow-y-auto">
-          {isLoading ? (
-            <div className="flex-1 flex items-center justify-center pt-10">
-              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : data?.data?.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm pt-10">
-              No products yet.
-            </div>
-          ) : (
-            data?.data?.map((p) => (
-              <div 
-                key={p.product_id} 
-                className="grid grid-cols-[2fr_1fr_2fr_auto] items-center text-sm py-4 border-b border-border/50 hover:bg-[#202020] transition-colors px-2 -mx-2 rounded-lg"
-              >
-                <div className="font-semibold text-foreground truncate pr-4">{p.name}</div>
-                <div className="text-right font-medium">{formatQty(p.stocks)}</div>
-                <div className="text-muted-foreground text-xs pl-6">{formatDateTime(p.created_at)}</div>
-                <div className="flex justify-end w-48">
-                  <StockEditor
-                    current={p.stocks ?? 0}
-                    onSave={(stocks) => update.mutate({ id: p.product_id!, body: { stocks } })}
-                  />
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-      <Pagination pagination={data?.pagination} page={page} onPageChange={setPage} />
+      
+      <Tabs defaultValue="products" className="flex flex-col flex-1 h-full">
+        <TabsList className="w-full max-w-[400px]">
+          <TabsTrigger value="products" className="flex-1">Product Catalog</TabsTrigger>
+          <TabsTrigger value="inventory" className="flex-1">Inventory</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="products" className="flex-1 min-h-0 mt-4">
+          <ProductsTab />
+        </TabsContent>
+        
+        <TabsContent value="inventory" className="flex-1 min-h-0 mt-4">
+          <InventoryTab />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
 
-function StockEditor({ current, onSave }: { current: number; onSave: (stocks: number) => void }) {
-  const [value, setValue] = useState(String(current))
-  const dirty = Number(value) !== current
+function ProductsTab() {
+  const [page, setPage] = useState(1)
+  const { data, isLoading } = useProducts({ page, page_size: PAGE_SIZE })
+
   return (
-    <div className="flex items-center justify-end gap-2">
-      <Input
-        type="number"
-        className="h-8 w-20 bg-[#1a1a1a] border-border text-center rounded-lg focus-visible:ring-1 focus-visible:ring-primary/50"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-      />
-      <Button 
-        size="sm" 
-        className={cn(
-          "rounded-full h-8 px-4 transition-colors",
-          dirty ? "bg-primary text-black hover:bg-primary/90" : "bg-[#202020] text-muted-foreground hover:bg-[#202020] opacity-50"
+    <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col h-full">
+      {/* Table Header */}
+      <div className="grid grid-cols-[2fr_2fr_1fr] text-xs font-medium text-muted-foreground pb-4 border-b border-border/50 gap-4">
+        <div>Name</div>
+        <div>SKU / ID</div>
+        <div className="text-right">Created</div>
+      </div>
+
+      {/* Table List */}
+      <div className="flex flex-col flex-1 overflow-y-auto">
+        {isLoading ? (
+          <div className="flex-1 flex items-center justify-center pt-10">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : data?.data?.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm pt-10">
+            No products in catalog yet.
+          </div>
+        ) : (
+          data?.data?.map((p) => (
+            <div 
+              key={p.product_id} 
+              className="grid grid-cols-[2fr_2fr_1fr] items-center text-sm py-4 border-b border-border/50 hover:bg-[#202020] transition-colors px-2 -mx-2 rounded-lg gap-4"
+            >
+              <div className="font-semibold text-foreground truncate">{p.name}</div>
+              <div className="text-muted-foreground font-mono text-xs truncate">
+                {p.sku || p.product_id?.split('-')[0]}
+              </div>
+              <div className="text-muted-foreground text-xs text-right">
+                {formatDateTime(p.created_at)}
+              </div>
+            </div>
+          ))
         )}
-        disabled={!dirty} 
-        onClick={() => {
-          onSave(Number(value))
-        }}
-      >
-        Save
-      </Button>
+      </div>
+      <div className="mt-auto pt-4 border-t border-border/50">
+        <Pagination pagination={data?.pagination} page={page} onPageChange={setPage} />
+      </div>
+    </div>
+  )
+}
+
+function InventoryTab() {
+  const [page, setPage] = useState(1)
+  const { data, isLoading } = useInventory({ page, page_size: PAGE_SIZE })
+
+  return (
+    <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col h-full">
+      {/* Table Header */}
+      <div className="grid grid-cols-[2fr_2fr_1fr_1fr] text-xs font-medium text-muted-foreground pb-4 border-b border-border/50 gap-4">
+        <div>Product ID</div>
+        <div>Organization ID</div>
+        <div className="text-right">Current Stock</div>
+        <div className="text-right">Received Stock</div>
+      </div>
+
+      {/* Table List */}
+      <div className="flex flex-col flex-1 overflow-y-auto">
+        {isLoading ? (
+          <div className="flex-1 flex items-center justify-center pt-10">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : data?.data?.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm pt-10">
+            No inventory records found.
+          </div>
+        ) : (
+          data?.data?.map((inv) => (
+            <div 
+              key={inv.inventory_id} 
+              className="grid grid-cols-[2fr_2fr_1fr_1fr] items-center text-sm py-4 border-b border-border/50 hover:bg-[#202020] transition-colors px-2 -mx-2 rounded-lg gap-4"
+            >
+              <div className="font-mono text-xs text-muted-foreground truncate" title={inv.product_id}>
+                {inv.product_id}
+              </div>
+              <div className="font-mono text-xs text-muted-foreground truncate" title={inv.organization_id}>
+                {inv.organization_id}
+              </div>
+              <div className="text-right font-medium text-foreground">
+                {formatQty(inv.current_stock)}
+              </div>
+              <div className="text-right text-muted-foreground">
+                {formatQty(inv.received_stock)}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      <div className="mt-auto pt-4 border-t border-border/50">
+        <Pagination pagination={data?.pagination} page={page} onPageChange={setPage} />
+      </div>
     </div>
   )
 }
@@ -112,7 +156,7 @@ function StockEditor({ current, onSave }: { current: number; onSave: (stocks: nu
 function CreateProductDialog() {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
-  const [stocks, setStocks] = useState('')
+  const [sku, setSku] = useState('')
   const [shortDescription, setShortDescription] = useState('')
   const [description, setDescription] = useState('')
   const [meta, setMeta] = useState<Record<string, string>>({})
@@ -122,14 +166,14 @@ function CreateProductDialog() {
     const other_info = buildMetadata(PRODUCT_SPEC, meta)
     await create.mutateAsync({
       name,
-      stocks: stocks ? Number(stocks) : undefined,
+      sku: sku || undefined,
       short_description: shortDescription || undefined,
       description: description || undefined,
       other_info: Object.keys(other_info).length ? other_info : undefined,
     })
     setOpen(false)
     setName('')
-    setStocks('')
+    setSku('')
     setShortDescription('')
     setDescription('')
     setMeta({})
@@ -144,8 +188,7 @@ function CreateProductDialog() {
         <DialogHeader>
           <DialogTitle>Create product / bundle</DialogTitle>
           <DialogDescription>
-            Only Administrators and Press-org members may create products. The owning organization
-            is derived from your account.
+            Only Administrators and Press-org members may create products. Stock levels are initialized via inventory delivery or administrative operations.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -154,13 +197,8 @@ function CreateProductDialog() {
             <Input id="p-name" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="p-stock">Initial stock</Label>
-            <Input
-              id="p-stock"
-              type="number"
-              value={stocks}
-              onChange={(e) => setStocks(e.target.value)}
-            />
+            <Label htmlFor="p-sku">SKU</Label>
+            <Input id="p-sku" value={sku} onChange={(e) => setSku(e.target.value)} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="p-short">Short description</Label>

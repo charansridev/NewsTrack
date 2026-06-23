@@ -6,7 +6,7 @@ import {
   useAssignmentLogs,
 } from '@/api/deliveries'
 import { formatDateTime, formatDuration, formatQty } from '@/lib/format'
-import { DeliveryStatusBadge, ItemStatusBadge } from '@/components/StatusBadge'
+import { DeliveryStatusBadge, AllocationStatusBadge } from '@/components/StatusBadge'
 import { ActorRefView } from '@/components/ActorRefView'
 import { StatusDialog } from './StatusDialog'
 import { AssignDialog } from './AssignDialog'
@@ -102,7 +102,7 @@ export default function DeliveryDetailPage() {
           <TabsTrigger value="assignments">Assignment history</TabsTrigger>
         </TabsList>
         <TabsContent value="items">
-          <ItemsTable delivery={delivery} />
+          <AllocationsTable delivery={delivery} />
         </TabsContent>
         <TabsContent value="logs">
           <LogsTable id={delivery.id!} />
@@ -115,8 +115,8 @@ export default function DeliveryDetailPage() {
   )
 }
 
-function ItemsTable({ delivery }: { delivery: import('@/types/models').Delivery }) {
-  const items = delivery.items ?? []
+function AllocationsTable({ delivery }: { delivery: import('@/types/models').Delivery }) {
+  const allocations = delivery.allocations ?? []
   return (
     <Card className="p-0">
       <Table>
@@ -129,17 +129,17 @@ function ItemsTable({ delivery }: { delivery: import('@/types/models').Delivery 
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items.map((i) => (
-            <TableRow key={i.id}>
-              <TableCell className="font-mono text-xs">{i.product_id?.slice(0, 12)}</TableCell>
+          {allocations.map((i) => (
+            <TableRow key={i.allocation_id}>
+              <TableCell className="font-mono text-xs">{i.inventory_id?.slice(0, 12)}</TableCell>
               <TableCell className="text-right">{formatQty(i.expected_quantity)}</TableCell>
               <TableCell className="text-right">{formatQty(i.confirmed_quantity)}</TableCell>
               <TableCell>
-                <ItemStatusBadge status={i.status} />
+                <AllocationStatusBadge status={i.status} />
               </TableCell>
             </TableRow>
           ))}
-          {items.length === 0 && (
+          {allocations.length === 0 && (
             <TableRow>
               <TableCell colSpan={4} className="text-center text-muted-foreground">
                 No items on this delivery.

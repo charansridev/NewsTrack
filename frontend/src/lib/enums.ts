@@ -1,7 +1,7 @@
 /** Enum value lists + display metadata, mirrored from the API contract. */
 import type {
   DeliveryStatus,
-  DeliveryItemStatus,
+  AllocationStatus,
   IssueStatus,
   UserRole,
   OrgType,
@@ -53,7 +53,7 @@ export const DELIVERY_STATUS_LABEL: Record<DeliveryStatus, string> = {
   Terminated: 'Terminated',
 }
 
-export const ITEM_STATUS_VARIANT: Record<DeliveryItemStatus, BadgeVariant> = {
+export const ALLOCATION_STATUS_VARIANT: Record<AllocationStatus, BadgeVariant> = {
   Pending: 'secondary',
   Confirmed: 'outline',
   Discrepancy: 'destructive',

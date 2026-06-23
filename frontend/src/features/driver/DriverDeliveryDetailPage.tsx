@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { api, ApiClientError } from '@/api/client'
 import { tokenStore } from '@/auth/tokenStore'
 import { formatQty } from '@/lib/format'
-import { DeliveryStatusBadge, ItemStatusBadge } from '@/components/StatusBadge'
+import { DeliveryStatusBadge, AllocationStatusBadge } from '@/components/StatusBadge'
 import { ActorRefView } from '@/components/ActorRefView'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -97,14 +97,14 @@ export default function DriverDeliveryDetailPage() {
                 <CardTitle className="text-base">Manifest</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-white">
-                {(delivery.items ?? []).map((i) => (
-                  <div key={i.id} className="flex items-center justify-between text-sm">
-                    <span className="font-mono text-xs text-white/70">{i.product_id?.slice(0, 10)}</span>
+                {(delivery.allocations ?? []).map((i) => (
+                  <div key={i.allocation_id} className="flex items-center justify-between text-sm">
+                    <span className="font-mono text-xs text-white/70">{i.inventory_id?.slice(0, 10)}</span>
                     <span>{formatQty(i.expected_quantity)}</span>
-                    <ItemStatusBadge status={i.status} />
+                    <AllocationStatusBadge status={i.status} />
                   </div>
                 ))}
-                {(delivery.items ?? []).length === 0 && (
+                {(delivery.allocations ?? []).length === 0 && (
                   <p className="text-sm text-white/60">No items.</p>
                 )}
               </CardContent>
@@ -142,10 +142,10 @@ export default function DriverDeliveryDetailPage() {
 }
 
 function DriverConfirm({ delivery, onDone }: { delivery: Delivery; onDone: () => void }) {
-  const items = delivery.items ?? []
+  const allocations = delivery.allocations ?? []
   const [photo, setPhoto] = useState('')
   const [quantities, setQuantities] = useState<Record<string, number>>(() =>
-    Object.fromEntries(items.map((i) => [i.id!, i.expected_quantity ?? 0])),
+    Object.fromEntries(allocations.map((i) => [i.allocation_id!, i.expected_quantity ?? 0])),
   )
   const confirm = useMutation({
     mutationFn: async () => {
@@ -153,7 +153,7 @@ function DriverConfirm({ delivery, onDone }: { delivery: Delivery; onDone: () =>
         `/deliveries/${delivery.id}/confirm`,
         {
           photo_url: photo || undefined,
-          items: items.map((i) => ({ item_id: i.id!, confirmed_quantity: quantities[i.id!] ?? 0 })),
+          allocations: allocations.map((i) => ({ allocation_id: i.allocation_id!, confirmed_quantity: quantities[i.allocation_id!] ?? 0 })),
         },
         { audience: 'driver' },
       )
@@ -175,14 +175,14 @@ function DriverConfirm({ delivery, onDone }: { delivery: Delivery; onDone: () =>
           <Label htmlFor="d-photo" className="text-white/80">Photo URL (optional)</Label>
           <Input id="d-photo" value={photo} onChange={(e) => setPhoto(e.target.value)} />
         </div>
-        {items.map((i) => (
-          <div key={i.id} className="flex items-center justify-between gap-2">
+        {allocations.map((i) => (
+          <div key={i.allocation_id} className="flex items-center justify-between gap-2">
             <span className="text-sm text-white/80">Expected {formatQty(i.expected_quantity)}</span>
             <Input
               type="number"
               className="w-28"
-              value={quantities[i.id!] ?? 0}
-              onChange={(e) => setQuantities((q) => ({ ...q, [i.id!]: Number(e.target.value) }))}
+              value={quantities[i.allocation_id!] ?? 0}
+              onChange={(e) => setQuantities((q) => ({ ...q, [i.allocation_id!]: Number(e.target.value) }))}
             />
           </div>
         ))}
