@@ -10,6 +10,16 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://vikram@/newstrack"
 
+    @property
+    def sync_database_url(self) -> str:
+        # Render provides `postgres://`, but SQLAlchemy with psycopg3 needs `postgresql+psycopg://`
+        url = self.database_url
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+psycopg://", 1)
+        elif url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+        return url
+
     # Two independent JWT systems — never share a secret between them.
     user_jwt_secret: str = "change-me-user-secret"
     driver_jwt_secret: str = "change-me-driver-secret"
