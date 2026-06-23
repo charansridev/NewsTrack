@@ -53,7 +53,7 @@ export default function DeliveriesPage() {
   }
 
   return (
-    <div>
+    <div className="animate-fadeIn">
       <PageHeader
         title="Deliveries"
         description="Live status board and historical lookup."
@@ -115,10 +115,11 @@ export default function DeliveriesPage() {
                 </TableCell>
               </TableRow>
             )}
-            {data?.data?.map((d) => (
+            {data?.data?.map((d, index) => (
               <TableRow
                 key={d.id}
-                className="cursor-pointer"
+                className="cursor-pointer hover:-translate-y-[1px] transition-transform animate-fadeInUp"
+                style={{ animationDelay: `${index * 30}ms`, animationFillMode: 'both' }}
                 onClick={() => navigate(`/deliveries/${d.id}`)}
               >
                 <TableCell>

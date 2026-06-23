@@ -63,50 +63,60 @@ export function AppLayout() {
   }
 
   return (
-    <div className="flex min-h-svh">
-      <aside className="flex w-60 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
-        <div className="flex h-14 items-center border-b px-4 font-semibold">NewsTrack</div>
-        <nav className="flex-1 space-y-1 p-2">
-          {items.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === '/'}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                    : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground',
-                )
-              }
-            >
-              <Icon className="size-4" />
-              {label}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="border-t p-3">
-          <div className="mb-2 px-1 text-sm">
-            <div className="font-medium">{user?.name}</div>
-            <div className="text-xs text-muted-foreground">{role}</div>
+    <div className="flex flex-col min-h-svh font-sans relative overflow-hidden">
+      {/* Minimal Professional Background with Subtle Indigo Glow */}
+      <div className="fixed inset-0 z-0 bg-[#0a0a0a]" />
+      <div className="fixed inset-0 z-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(99,102,241,0.15),rgba(0,0,0,0))]" />
+      
+      {/* Floating Top Navigation */}
+      <div className="relative z-20 pt-6 px-6 md:px-8 w-full max-w-7xl mx-auto">
+        <header className="flex h-16 shrink-0 items-center justify-between rounded-full border border-white/20 bg-white/10 backdrop-blur-[32px] px-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)]">
+          <div className="flex items-center gap-8">
+            <div className="font-extrabold text-xl tracking-tighter text-white drop-shadow-md">
+              News<span className="text-white/80 font-bold">Track</span>
+            </div>
+            
+            <nav className="hidden md:flex items-center space-x-1">
+              {items.map(({ to, label }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={to === '/'}
+                  className={({ isActive }) =>
+                    cn(
+                      'px-4 py-2 rounded-full text-sm font-semibold transition-all duration-300',
+                      isActive
+                        ? 'bg-white/20 text-white shadow-md shadow-black/10 backdrop-blur-md border border-white/30'
+                        : 'text-white/70 hover:bg-white/10 hover:text-white',
+                    )
+                  }
+                >
+                  {label}
+                </NavLink>
+              ))}
+            </nav>
           </div>
-          <Button variant="ghost" size="sm" className="w-full justify-start" onClick={handleLogout}>
-            <LogOut className="size-4" />
-            Sign out
-          </Button>
-        </div>
-      </aside>
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 shrink-0 items-center justify-end border-b px-6">
-          <NotificationBell />
+          
+          <div className="flex items-center gap-4">
+            <div className="text-white drop-shadow-md"><NotificationBell /></div>
+            <div className="h-6 w-px bg-white/20 hidden md:block" />
+            <div className="hidden md:flex items-center gap-3">
+              <div className="flex flex-col items-end text-right">
+                <span className="text-sm font-bold text-white leading-tight drop-shadow-md">{user?.name}</span>
+                <span className="text-[10px] font-bold text-white/70 uppercase tracking-widest">{role}</span>
+              </div>
+              <Button variant="outline" size="icon" className="rounded-full border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-error transition-colors backdrop-blur-sm shadow-md" onClick={handleLogout}>
+                <LogOut className="size-4" />
+              </Button>
+            </div>
+          </div>
         </header>
-        <main className="flex-1 overflow-auto">
-          <div className="mx-auto max-w-6xl p-6">
-            <Outlet />
-          </div>
-        </main>
       </div>
+
+      {/* Main Content */}
+      <main className="relative z-10 flex-1 w-full max-w-7xl mx-auto p-6 md:p-8 mt-2 animate-fadeInUp">
+        <Outlet />
+      </main>
     </div>
   )
 }
