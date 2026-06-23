@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Download } from 'lucide-react'
+import { Download, Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import {
   useRoutePerformance,
   useDeliverySuccess,
@@ -11,21 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+
 
 export default function AnalyticsPage() {
   return (
@@ -50,55 +37,53 @@ export default function AnalyticsPage() {
 function RoutePerformanceTab() {
   const { data, isLoading } = useRoutePerformance()
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col h-[calc(100vh-230px)] gap-4 animate-fadeIn mt-4">
       <div className="flex justify-end">
-        <Button variant="outline" size="sm" onClick={() => exportReportPdf('route-performance')}>
-          <Download className="size-4" />
+        <Button className="bg-[#202020] text-foreground hover:bg-[#2a2a2a] rounded-full transition-colors border border-border" size="sm" onClick={() => exportReportPdf('route-performance')}>
+          <Download className="size-4 mr-2" />
           Export PDF
         </Button>
       </div>
-      <Card className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Route (sender → recipient)</TableHead>
-              <TableHead className="text-right">Runs</TableHead>
-              <TableHead className="text-right">Avg</TableHead>
-              <TableHead className="text-right">Min / Max</TableHead>
-              <TableHead className="text-right">On-time</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading && (
-              <TableRow>
-                <TableCell colSpan={5}>
-                  <Skeleton className="h-6 w-full" />
-                </TableCell>
-              </TableRow>
-            )}
-            {data?.map((r, i) => (
-              <TableRow key={i}>
-                <TableCell className="font-mono text-xs">
-                  {r.sender_address_id?.slice(0, 8)} → {r.recipient_address_id?.slice(0, 8)}
-                </TableCell>
-                <TableCell className="text-right">{r.total_runs}</TableCell>
-                <TableCell className="text-right">{formatDuration(Math.round(r.avg_duration))}</TableCell>
-                <TableCell className="text-right text-muted-foreground">
-                  {formatDuration(r.min_duration)} / {formatDuration(r.max_duration)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">{r.on_time_pct?.toFixed(2)}%</TableCell>
-              </TableRow>
-            ))}
-            {data && data.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground">
-                  No route data.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </Card>
+      <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col flex-1 min-h-[400px]">
+        {/* Table Header */}
+        <div className="grid grid-cols-[3fr_1fr_1fr_2fr_1fr] text-xs font-medium text-muted-foreground pb-4 border-b border-border/50 gap-4">
+          <div>Route (sender → recipient)</div>
+          <div className="text-right">Runs</div>
+          <div className="text-right">Avg</div>
+          <div className="text-right">Min / Max</div>
+          <div className="text-right pr-2">On-time</div>
+        </div>
+
+        {/* Table List */}
+        <div className="flex flex-col flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="flex-1 flex items-center justify-center pt-10">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : data?.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm pt-10">
+              No route data.
+            </div>
+          ) : (
+            data?.map((r, i) => (
+              <div 
+                key={i} 
+                className="grid grid-cols-[3fr_1fr_1fr_2fr_1fr] items-center text-sm py-4 border-b border-border/50 hover:bg-[#202020] transition-colors px-2 -mx-2 rounded-lg gap-4"
+              >
+                <div className="font-mono text-xs text-foreground truncate">
+                  {r.sender_address_id?.slice(0, 8)} <span className="text-muted-foreground">→</span> {r.recipient_address_id?.slice(0, 8)}
+                </div>
+                <div className="text-right font-medium">{r.total_runs}</div>
+                <div className="text-right">{formatDuration(Math.round(r.avg_duration))}</div>
+                <div className="text-right text-muted-foreground text-xs">
+                  {formatDuration(r.min_duration)} <span className="mx-1">/</span> {formatDuration(r.max_duration)}
+                </div>
+                <div className="text-right font-semibold text-primary pr-2">{r.on_time_pct?.toFixed(2)}%</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -107,61 +92,66 @@ function DeliverySuccessTab() {
   const [groupBy, setGroupBy] = useState<'route' | 'vendor' | 'hub'>('vendor')
   const { data, isLoading } = useDeliverySuccess(groupBy)
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col h-[calc(100vh-230px)] gap-4 animate-fadeIn mt-4">
       <div className="flex items-center justify-between">
-        <Select value={groupBy} onValueChange={(v) => setGroupBy(v as typeof groupBy)}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="route">By route</SelectItem>
-            <SelectItem value="vendor">By vendor</SelectItem>
-            <SelectItem value="hub">By hub</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button variant="outline" size="sm" onClick={() => exportReportPdf('delivery-success')}>
-          <Download className="size-4" />
+        <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-hide">
+          {[{ id: 'route', label: 'By route' }, { id: 'vendor', label: 'By vendor' }, { id: 'hub', label: 'By hub' }].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setGroupBy(tab.id as any)}
+              className={cn(
+                "flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap border",
+                groupBy === tab.id
+                  ? "bg-primary text-black border-primary" 
+                  : "border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <Button className="bg-[#202020] text-foreground hover:bg-[#2a2a2a] rounded-full transition-colors border border-border" size="sm" onClick={() => exportReportPdf('delivery-success')}>
+          <Download className="size-4 mr-2" />
           Export PDF
         </Button>
       </div>
-      <Card className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Key</TableHead>
-              <TableHead className="text-right">Success</TableHead>
-              <TableHead className="text-right">Delivered</TableHead>
-              <TableHead className="text-right">Missed</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading && (
-              <TableRow>
-                <TableCell colSpan={5}>
-                  <Skeleton className="h-6 w-full" />
-                </TableCell>
-              </TableRow>
-            )}
-            {data?.map((row, i) => (
-              <TableRow key={i}>
-                <TableCell className="font-mono text-xs">{row.key}</TableCell>
-                <TableCell className="text-right tabular-nums">{row.success_rate?.toFixed(2)}%</TableCell>
-                <TableCell className="text-right">{row.delivered}</TableCell>
-                <TableCell className="text-right">{row.missed}</TableCell>
-                <TableCell className="text-right">{row.total}</TableCell>
-              </TableRow>
-            ))}
-            {data && data.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground">
-                  No data.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </Card>
+
+      <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col flex-1 min-h-[400px]">
+        {/* Table Header */}
+        <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] text-xs font-medium text-muted-foreground pb-4 border-b border-border/50 gap-4">
+          <div>Key</div>
+          <div className="text-right">Success</div>
+          <div className="text-right">Delivered</div>
+          <div className="text-right">Missed</div>
+          <div className="text-right pr-2">Total</div>
+        </div>
+
+        {/* Table List */}
+        <div className="flex flex-col flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="flex-1 flex items-center justify-center pt-10">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : data?.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm pt-10">
+              No data.
+            </div>
+          ) : (
+            data?.map((row, i) => (
+              <div 
+                key={i} 
+                className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] items-center text-sm py-4 border-b border-border/50 hover:bg-[#202020] transition-colors px-2 -mx-2 rounded-lg gap-4"
+              >
+                <div className="font-mono text-xs text-foreground truncate">{row.key}</div>
+                <div className="text-right font-semibold text-primary">{row.success_rate?.toFixed(2)}%</div>
+                <div className="text-right text-[#33ff33]">{row.delivered}</div>
+                <div className="text-right text-red-500">{row.missed}</div>
+                <div className="text-right font-medium pr-2">{row.total}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   )
 }

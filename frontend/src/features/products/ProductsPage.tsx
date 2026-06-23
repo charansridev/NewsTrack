@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { useProducts, useCreateProduct, useUpdateProduct } from '@/api/products'
 import { formatDateTime, formatQty } from '@/lib/format'
 import { PageHeader } from '@/components/PageHeader'
@@ -18,14 +20,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+
 import { MetadataFields } from '@/components/MetadataFields'
 import { metadataSpec, buildMetadata } from '@/lib/metadataSchemas'
 
@@ -38,54 +33,51 @@ export default function ProductsPage() {
   const update = useUpdateProduct()
 
   return (
-    <div>
+    <div className="flex flex-col h-[calc(100vh-140px)] gap-4">
       <PageHeader
         title="Products"
         description="Bundles / editions. Stock is set at production and reduced on dispatch."
         actions={<CreateProductDialog />}
       />
-      <Card className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead className="text-right">Stock</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead className="w-32 text-right">Adjust stock</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading &&
-              Array.from({ length: 6 }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell colSpan={4}>
-                    <Skeleton className="h-6 w-full" />
-                  </TableCell>
-                </TableRow>
-              ))}
-            {data?.data?.map((p) => (
-              <TableRow key={p.product_id}>
-                <TableCell className="font-medium">{p.name}</TableCell>
-                <TableCell className="text-right tabular-nums">{formatQty(p.stocks)}</TableCell>
-                <TableCell className="text-muted-foreground">{formatDateTime(p.created_at)}</TableCell>
-                <TableCell className="text-right">
+      <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col flex-1 min-h-0">
+        {/* Table Header */}
+        <div className="grid grid-cols-[2fr_1fr_2fr_auto] text-xs font-medium text-muted-foreground pb-4 border-b border-border/50">
+          <div>Name</div>
+          <div className="text-right">Stock</div>
+          <div className="pl-6">Created</div>
+          <div className="w-48 text-right">Adjust stock</div>
+        </div>
+
+        {/* Table List */}
+        <div className="flex flex-col flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="flex-1 flex items-center justify-center pt-10">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : data?.data?.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm pt-10">
+              No products yet.
+            </div>
+          ) : (
+            data?.data?.map((p) => (
+              <div 
+                key={p.product_id} 
+                className="grid grid-cols-[2fr_1fr_2fr_auto] items-center text-sm py-4 border-b border-border/50 hover:bg-[#202020] transition-colors px-2 -mx-2 rounded-lg"
+              >
+                <div className="font-semibold text-foreground truncate pr-4">{p.name}</div>
+                <div className="text-right font-medium">{formatQty(p.stocks)}</div>
+                <div className="text-muted-foreground text-xs pl-6">{formatDateTime(p.created_at)}</div>
+                <div className="flex justify-end w-48">
                   <StockEditor
                     current={p.stocks ?? 0}
                     onSave={(stocks) => update.mutate({ id: p.product_id!, body: { stocks } })}
                   />
-                </TableCell>
-              </TableRow>
-            ))}
-            {data && data.data.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground">
-                  No products yet.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </Card>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
       <Pagination pagination={data?.pagination} page={page} onPageChange={setPage} />
     </div>
   )
@@ -95,14 +87,24 @@ function StockEditor({ current, onSave }: { current: number; onSave: (stocks: nu
   const [value, setValue] = useState(String(current))
   const dirty = Number(value) !== current
   return (
-    <div className="flex items-center justify-end gap-1">
+    <div className="flex items-center justify-end gap-2">
       <Input
         type="number"
-        className="h-8 w-24"
+        className="h-8 w-20 bg-[#1a1a1a] border-border text-center rounded-lg focus-visible:ring-1 focus-visible:ring-primary/50"
         value={value}
         onChange={(e) => setValue(e.target.value)}
       />
-      <Button size="sm" variant="outline" disabled={!dirty} onClick={() => onSave(Number(value))}>
+      <Button 
+        size="sm" 
+        className={cn(
+          "rounded-full h-8 px-4 transition-colors",
+          dirty ? "bg-primary text-black hover:bg-primary/90" : "bg-[#202020] text-muted-foreground hover:bg-[#202020] opacity-50"
+        )}
+        disabled={!dirty} 
+        onClick={() => {
+          onSave(Number(value))
+        }}
+      >
         Save
       </Button>
     </div>

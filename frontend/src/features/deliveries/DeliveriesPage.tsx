@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Loader2, ArrowRight } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { useDeliveries, type DeliveryFilters } from '@/api/deliveries'
 import { DELIVERY_STATUSES } from '@/lib/enums'
 import { formatDateTime, formatDuration } from '@/lib/format'
@@ -12,21 +13,6 @@ import { CreateDeliveryDialog } from './CreateDeliveryDialog'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import type { DeliveryStatus } from '@/types/models'
 
 const PAGE_SIZE = 25
@@ -60,103 +46,105 @@ export default function DeliveriesPage() {
         actions={<CreateDeliveryDialog />}
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Select value={status ?? ALL} onValueChange={changeStatus}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="All statuses" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>All statuses</SelectItem>
-            {DELIVERY_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex items-center gap-3 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+        {[{ id: ALL, label: 'All statuses' }, ...DELIVERY_STATUSES.map(s => ({ id: s, label: s }))].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => changeStatus(tab.id)}
+            className={cn(
+              "flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap border",
+              (status === tab.id || (tab.id === ALL && !status))
+                ? "bg-primary text-black border-primary" 
+                : "border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground"
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
         <Button
           variant={onlyIssues ? 'default' : 'outline'}
+          className={cn(
+            "rounded-full transition-all ml-auto",
+            onlyIssues ? "bg-red-500 text-white border-red-500 hover:bg-red-600" : "border-border text-muted-foreground hover:text-foreground"
+          )}
           size="sm"
           onClick={() => {
             setOnlyIssues((v) => !v)
             setPage(1)
           }}
         >
-          <AlertTriangle className="size-4" />
+          <AlertTriangle className="size-4 mr-2" />
           With issues
         </Button>
       </div>
 
-      <Card className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Status</TableHead>
-              <TableHead>Sender</TableHead>
-              <TableHead>Recipient</TableHead>
-              <TableHead>Planned</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead className="text-right">Issues</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading &&
-              Array.from({ length: 6 }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell colSpan={6}>
-                    <Skeleton className="h-6 w-full" />
-                  </TableCell>
-                </TableRow>
-              ))}
-            {isError && (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center text-destructive">
-                  Could not load deliveries.
-                </TableCell>
-              </TableRow>
-            )}
-            {data?.data?.map((d, index) => (
-              <TableRow
+      <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col flex-1 min-h-[500px] mb-6">
+        {/* Table Header */}
+        <div className="grid grid-cols-[1fr_2fr_2fr_1fr_1fr_1fr_auto] text-xs font-medium text-muted-foreground pb-4 border-b border-border/50 gap-4">
+          <div>Status</div>
+          <div>Sender</div>
+          <div>Recipient</div>
+          <div>Planned</div>
+          <div>Created</div>
+          <div className="text-right">Issues</div>
+          <div className="w-8"></div>
+        </div>
+
+        {/* Table List */}
+        <div className="flex flex-col flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="flex-1 flex items-center justify-center pt-10">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : isError ? (
+            <div className="flex-1 flex items-center justify-center text-destructive text-sm pt-10">
+              Could not load deliveries.
+            </div>
+          ) : data?.data?.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm pt-10">
+              No deliveries match these filters.
+            </div>
+          ) : (
+            data?.data?.map((d, index) => (
+              <div
                 key={d.id}
-                className="cursor-pointer hover:-translate-y-[1px] transition-transform animate-fadeInUp"
-                style={{ animationDelay: `${index * 30}ms`, animationFillMode: 'both' }}
                 onClick={() => navigate(`/deliveries/${d.id}`)}
+                className="grid grid-cols-[1fr_2fr_2fr_1fr_1fr_1fr_auto] items-center text-sm py-4 border-b border-border/50 hover:bg-[#202020] transition-colors px-2 -mx-2 rounded-lg cursor-pointer animate-fadeInUp gap-4"
+                style={{ animationDelay: `${index * 30}ms`, animationFillMode: 'both' }}
               >
-                <TableCell>
-                  <DeliveryStatusBadge status={d.status} />
-                </TableCell>
-                <TableCell>
-                  <ActorRefView actor={d.sender} />
-                </TableCell>
-                <TableCell>
-                  <ActorRefView actor={d.recipient} />
-                </TableCell>
-                <TableCell>{formatDuration(d.planned_duration)}</TableCell>
-                <TableCell className="text-muted-foreground">
-                  {formatDateTime(d.created_at)}
-                </TableCell>
-                <TableCell className="text-right">
+                <div>
+                  <span className={cn(
+                    "px-3 py-1 rounded-full text-[11px] font-bold inline-flex items-center justify-center",
+                    d.status === 'Dispatched' || d.status === 'OutForDelivery' ? "bg-primary text-black" :
+                    d.status === 'Delivered' ? "bg-[#33ff33] text-black" :
+                    d.status === 'Terminated' ? "bg-red-500 text-white" :
+                    "bg-[#e2e2e2] text-black"
+                  )}>
+                    {d.status}
+                  </span>
+                </div>
+                <div className="truncate"><ActorRefView actor={d.sender} /></div>
+                <div className="truncate"><ActorRefView actor={d.recipient} /></div>
+                <div className="text-muted-foreground">{formatDuration(d.planned_duration)}</div>
+                <div className="text-muted-foreground text-xs">{formatDateTime(d.created_at)}</div>
+                <div className="text-right">
                   {d.has_issue ? (
-                    <span className="inline-flex items-center gap-1 text-destructive">
-                      <AlertTriangle className="size-4" />
+                    <span className="inline-flex items-center gap-1 text-red-500 font-semibold">
+                      <AlertTriangle className="size-3" />
                       {d.issue_count ?? 1}
                     </span>
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
-                </TableCell>
-              </TableRow>
-            ))}
-            {data && data.data.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  No deliveries match these filters.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </Card>
+                </div>
+                <div className="flex justify-end w-8">
+                  <ArrowRight className="w-4 h-4 text-muted-foreground" />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
 
       <Pagination pagination={data?.pagination} page={page} onPageChange={setPage} />
     </div>

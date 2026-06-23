@@ -3,48 +3,38 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   Truck,
-  Package,
-  AlertTriangle,
-  Users,
-  Building2,
-  CarFront,
   BarChart3,
   LogOut,
+  Search,
+  Bell,
+  Settings,
+  ShoppingCart,
+  Wallet,
+  FileText
 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/api/client'
 import { useAuth } from '@/auth/AuthContext'
 import { tokenStore } from '@/auth/tokenStore'
 import { useRealtime } from '@/realtime/useRealtime'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
-import { NotificationBell } from '@/features/notifications/NotificationBell'
+import { Input } from '@/components/ui/input'
 import type { UserRole } from '@/types/models'
 
 interface NavItem {
   to: string
   label: string
   icon: React.ComponentType<{ className?: string }>
-  roles?: UserRole[] // undefined = all roles
+  roles?: UserRole[]
 }
 
 const NAV: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/deliveries', label: 'Deliveries', icon: Truck },
-  { to: '/products', label: 'Products', icon: Package },
-  { to: '/issues', label: 'Issues', icon: AlertTriangle },
-  {
-    to: '/drivers',
-    label: 'Drivers & Vehicles',
-    icon: CarFront,
-    roles: ['Administrator', 'DistributionManager'],
-  },
-  { to: '/organizations', label: 'Organizations', icon: Building2, roles: ['Administrator'] },
-  { to: '/users', label: 'Users', icon: Users, roles: ['Administrator'] },
-  {
-    to: '/analytics',
-    label: 'Analytics',
-    icon: BarChart3,
-    roles: ['Administrator', 'DistributionManager'],
-  },
+  { to: '/deliveries', label: 'Deliveries', icon: ShoppingCart }, // Using ShoppingCart for cart icon
+  { to: '/products', label: 'Products', icon: Truck },
+  { to: '/issues', label: 'Issues', icon: FileText },
+  { to: '/drivers', label: 'Drivers', icon: Wallet },
+  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
 ]
 
 export function AppLayout() {
@@ -52,8 +42,18 @@ export function AppLayout() {
   const navigate = useNavigate()
   const role = user?.role
 
-  // Live transit-board + alerts feed for the ops console.
   useRealtime(tokenStore.getUserAccess())
+
+  // Check for open issues to show notification badge
+  const { data: issuesData } = useQuery({
+    queryKey: ['open-issues-count'],
+    queryFn: async () => {
+      const res = await api.get('/issues', { params: { status: 'Open', page_size: 1 } })
+      return res.data
+    },
+    refetchInterval: 60000,
+  })
+  const hasOpenIssues = (issuesData?.pagination?.total || 0) > 0
 
   const items = NAV.filter((i) => !i.roles || (role && i.roles.includes(role)))
 
@@ -63,60 +63,89 @@ export function AppLayout() {
   }
 
   return (
-    <div className="flex flex-col min-h-svh font-sans relative overflow-hidden">
-      {/* Minimal Professional Background with Subtle Indigo Glow */}
-      <div className="fixed inset-0 z-0 bg-[#0a0a0a]" />
-      <div className="fixed inset-0 z-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(99,102,241,0.15),rgba(0,0,0,0))]" />
-      
-      {/* Floating Top Navigation */}
-      <div className="relative z-20 pt-6 px-6 md:px-8 w-full max-w-7xl mx-auto">
-        <header className="flex h-16 shrink-0 items-center justify-between rounded-full border border-white/20 bg-white/10 backdrop-blur-[32px] px-6 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)]">
-          <div className="flex items-center gap-8">
-            <div className="font-extrabold text-xl tracking-tighter text-white drop-shadow-md">
-              News<span className="text-white/80 font-bold">Track</span>
-            </div>
-            
-            <nav className="hidden md:flex items-center space-x-1">
-              {items.map(({ to, label }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  end={to === '/'}
-                  className={({ isActive }) =>
-                    cn(
-                      'px-4 py-2 rounded-full text-sm font-semibold transition-all duration-300',
-                      isActive
-                        ? 'bg-white/20 text-white shadow-md shadow-black/10 backdrop-blur-md border border-white/30'
-                        : 'text-white/70 hover:bg-white/10 hover:text-white',
-                    )
-                  }
-                >
-                  {label}
-                </NavLink>
-              ))}
-            </nav>
+    <div className="flex h-screen w-full bg-background overflow-hidden text-foreground">
+      {/* Sidebar Navigation */}
+      <aside className="w-[80px] sm:w-[100px] border-r border-border bg-card flex flex-col items-center py-6 shrink-0 z-20">
+        {/* Neon Yellow Logo */}
+        <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground mb-8">
+          <div className="flex gap-[2px] items-end pb-[2px]">
+            <div className="w-1.5 h-1.5 bg-black rounded-full" />
+            <div className="w-1.5 h-3 bg-black rounded-full" />
+            <div className="w-1.5 h-2 bg-black rounded-full" />
           </div>
-          
-          <div className="flex items-center gap-4">
-            <div className="text-white drop-shadow-md"><NotificationBell /></div>
-            <div className="h-6 w-px bg-white/20 hidden md:block" />
-            <div className="hidden md:flex items-center gap-3">
-              <div className="flex flex-col items-end text-right">
-                <span className="text-sm font-bold text-white leading-tight drop-shadow-md">{user?.name}</span>
-                <span className="text-[10px] font-bold text-white/70 uppercase tracking-widest">{role}</span>
+        </div>
+
+        {/* Main Nav Links */}
+        <nav className="flex flex-col gap-6 flex-1 items-center w-full">
+          {items.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === '/'}
+              title={label}
+              className={({ isActive }) =>
+                cn(
+                  'p-3 rounded-xl transition-all duration-300 relative group',
+                  isActive
+                    ? 'text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                )
+              }
+            >
+              <Icon className="w-6 h-6" />
+            </NavLink>
+          ))}
+        </nav>
+
+        {/* Bottom Actions */}
+        <div className="flex flex-col gap-6 items-center w-full mt-auto text-muted-foreground">
+          <button className="p-3 rounded-xl hover:text-foreground transition-colors" title="Settings">
+            <Settings className="w-6 h-6" />
+          </button>
+          <button className="p-3 rounded-xl hover:text-foreground transition-colors" title="Logout" onClick={handleLogout}>
+            <LogOut className="w-6 h-6" />
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        {/* Top Header */}
+        <header className="h-[90px] flex shrink-0 items-center justify-between px-6 md:px-8 z-10">
+          {/* Search Bar */}
+          <div className="relative w-full max-w-sm">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground w-[18px] h-[18px]" />
+            <Input 
+              className="w-full bg-card border-none pl-12 pr-4 text-[15px] rounded-full h-12 placeholder:text-muted-foreground/70 focus-visible:ring-1 focus-visible:ring-primary/50" 
+              placeholder="Search" 
+            />
+          </div>
+
+          {/* User Profile Info */}
+          <div className="flex items-center gap-5 sm:gap-6">
+            <button className="relative w-10 h-10 flex items-center justify-center rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-card transition-colors">
+              <Bell className="w-5 h-5" />
+              {hasOpenIssues && (
+                <span className="absolute top-0 right-0 w-3 h-3 bg-primary border-2 border-background rounded-full animate-pulse" />
+              )}
+            </button>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full border border-border bg-[#202020] flex items-center justify-center text-primary font-bold text-sm">
+                {user?.name ? user.name.charAt(0).toUpperCase() : 'A'}
               </div>
-              <Button variant="outline" size="icon" className="rounded-full border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-error transition-colors backdrop-blur-sm shadow-md" onClick={handleLogout}>
-                <LogOut className="size-4" />
-              </Button>
+              <div className="hidden sm:flex flex-col text-left">
+                <span className="font-semibold text-foreground text-[15px] leading-tight">{user?.name || 'System Admin'}</span>
+                <span className="text-muted-foreground text-xs font-medium capitalize">{user?.role?.replace(/([A-Z])/g, ' $1').trim() || 'Admin'}</span>
+              </div>
             </div>
           </div>
         </header>
-      </div>
 
-      {/* Main Content */}
-      <main className="relative z-10 flex-1 w-full max-w-7xl mx-auto p-6 md:p-8 mt-2 animate-fadeInUp">
-        <Outlet />
-      </main>
+        {/* Page Outlet */}
+        <main className="flex-1 overflow-y-auto px-6 md:px-8 pb-8">
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 }

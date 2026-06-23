@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import {
   useDrivers,
   useVehicleList,
@@ -29,14 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+
 import { MetadataFields } from '@/components/MetadataFields'
 import { metadataSpec, buildMetadata } from '@/lib/metadataSchemas'
 import type { Vehicle } from '@/types/models'
@@ -68,53 +63,60 @@ function DriversTab() {
   const { data, isLoading } = useDrivers()
   const update = useUpdateDriver()
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col h-[calc(100vh-230px)] gap-4 animate-fadeIn mt-4">
       <div className="flex justify-end">
         <CreateDriverDialog />
       </div>
-      <Card className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Mobile</TableHead>
-              <TableHead>Availability</TableHead>
-              <TableHead className="text-right">Action</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading && (
-              <TableRow>
-                <TableCell colSpan={4}>
-                  <Skeleton className="h-6 w-full" />
-                </TableCell>
-              </TableRow>
-            )}
-            {data?.map((d) => (
-              <TableRow key={d.driver_id}>
-                <TableCell className="font-medium">{d.driver_name}</TableCell>
-                <TableCell>{d.mobile}</TableCell>
-                <TableCell>
-                  <Badge variant={d.is_available ? 'outline' : 'secondary'}>
+      <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col flex-1 min-h-[400px]">
+        {/* Table Header */}
+        <div className="grid grid-cols-[2fr_2fr_1fr_1fr] text-xs font-medium text-muted-foreground pb-4 border-b border-border/50 gap-4">
+          <div>Name</div>
+          <div>Mobile</div>
+          <div>Availability</div>
+          <div className="text-right">Action</div>
+        </div>
+        {/* Table List */}
+        <div className="flex flex-col flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="flex-1 flex items-center justify-center pt-10">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : data?.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm pt-10">
+              No drivers found.
+            </div>
+          ) : (
+            data?.map((d) => (
+              <div 
+                key={d.driver_id} 
+                className="grid grid-cols-[2fr_2fr_1fr_1fr] items-center text-sm py-4 border-b border-border/50 hover:bg-[#202020] transition-colors px-2 -mx-2 rounded-lg gap-4"
+              >
+                <div className="font-semibold text-foreground truncate">{d.driver_name}</div>
+                <div className="text-muted-foreground">{d.mobile}</div>
+                <div>
+                  <span className={cn(
+                    "px-3 py-1 rounded-full text-[11px] font-bold inline-flex items-center justify-center",
+                    d.is_available ? "bg-[#33ff33] text-black" : "bg-[#e2e2e2] text-black"
+                  )}>
                     {d.is_available ? 'Available' : 'Busy'}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right">
+                  </span>
+                </div>
+                <div className="flex justify-end">
                   <Button
                     size="sm"
-                    variant="outline"
+                    className="bg-[#202020] hover:bg-[#2a2a2a] text-foreground rounded-full transition-colors"
                     onClick={() =>
                       update.mutate({ id: d.driver_id!, body: { is_available: !d.is_available } })
                     }
                   >
-                    Toggle availability
+                    Toggle
                   </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -122,37 +124,41 @@ function DriversTab() {
 function VehiclesTab() {
   const { data, isLoading } = useVehicleList()
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col h-[calc(100vh-230px)] gap-4 animate-fadeIn mt-4">
       <div className="flex justify-end">
         <CreateVehicleDialog />
       </div>
-      <Card className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Number</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead className="text-right">Capacity</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading && (
-              <TableRow>
-                <TableCell colSpan={3}>
-                  <Skeleton className="h-6 w-full" />
-                </TableCell>
-              </TableRow>
-            )}
-            {data?.map((v) => (
-              <TableRow key={v.vehicle_id}>
-                <TableCell className="font-medium">{v.vehicle_number}</TableCell>
-                <TableCell>{v.vehicle_type}</TableCell>
-                <TableCell className="text-right tabular-nums">{v.capacity ?? '—'}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
+      <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col flex-1 min-h-[400px]">
+        {/* Table Header */}
+        <div className="grid grid-cols-[2fr_1fr_1fr] text-xs font-medium text-muted-foreground pb-4 border-b border-border/50 gap-4">
+          <div>Number</div>
+          <div>Type</div>
+          <div className="text-right">Capacity</div>
+        </div>
+        {/* Table List */}
+        <div className="flex flex-col flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="flex-1 flex items-center justify-center pt-10">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : data?.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm pt-10">
+              No vehicles found.
+            </div>
+          ) : (
+            data?.map((v) => (
+              <div 
+                key={v.vehicle_id} 
+                className="grid grid-cols-[2fr_1fr_1fr] items-center text-sm py-4 border-b border-border/50 hover:bg-[#202020] transition-colors px-2 -mx-2 rounded-lg gap-4"
+              >
+                <div className="font-semibold text-foreground">{v.vehicle_number}</div>
+                <div className="text-muted-foreground">{v.vehicle_type}</div>
+                <div className="text-right font-medium">{v.capacity ?? '—'}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   )
 }

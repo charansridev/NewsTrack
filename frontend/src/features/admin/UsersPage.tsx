@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { useUsers, useCreateUser, useOrganizations } from '@/api/references'
 import { USER_ROLES } from '@/lib/enums'
 import { PageHeader } from '@/components/PageHeader'
@@ -23,14 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+
 import { MetadataFields } from '@/components/MetadataFields'
 import { metadataSpec, buildMetadata } from '@/lib/metadataSchemas'
 import type { UserRole } from '@/types/models'
@@ -42,63 +37,73 @@ export default function UsersPage() {
   const { data, isLoading } = useUsers(role ? { role } : undefined)
 
   return (
-    <div>
+    <div className="flex flex-col h-[calc(100vh-140px)] gap-4 animate-fadeIn">
       <PageHeader
         title="Users"
         description="Platform accounts across the four roles."
         actions={<CreateUserDialog />}
       />
-      <div className="mb-4">
-        <Select
-          value={role ?? ALL}
-          onValueChange={(v) => setRole(v === ALL ? undefined : (v as UserRole))}
-        >
-          <SelectTrigger className="w-56">
-            <SelectValue placeholder="All roles" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>All roles</SelectItem>
-            {USER_ROLES.map((r) => (
-              <SelectItem key={r} value={r}>
-                {r}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <Card className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading && (
-              <TableRow>
-                <TableCell colSpan={4}>
-                  <Skeleton className="h-6 w-full" />
-                </TableCell>
-              </TableRow>
+
+      <div className="flex items-center gap-3 mb-2 overflow-x-auto pb-2 scrollbar-hide">
+        {[{ id: ALL, label: 'All roles' }, ...USER_ROLES.map(r => ({ id: r, label: r.replace(/([A-Z])/g, ' $1').trim() }))].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setRole(tab.id === ALL ? undefined : (tab.id as UserRole))}
+            className={cn(
+              "flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap border",
+              (role === tab.id || (tab.id === ALL && !role))
+                ? "bg-primary text-black border-primary" 
+                : "border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground"
             )}
-            {data?.data?.map((u) => (
-              <TableRow key={u.id}>
-                <TableCell className="font-medium">{u.name}</TableCell>
-                <TableCell className="text-muted-foreground">{u.email}</TableCell>
-                <TableCell>{u.role}</TableCell>
-                <TableCell>
-                  <Badge variant={u.is_active === false ? 'secondary' : 'outline'}>
-                    {u.is_active === false ? 'Inactive' : 'Active'}
-                  </Badge>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col flex-1 min-h-[400px]">
+        {/* Table Header */}
+        <div className="grid grid-cols-[2fr_2fr_1fr_1fr] text-xs font-medium text-muted-foreground pb-4 border-b border-border/50 gap-4">
+          <div>Name</div>
+          <div>Email</div>
+          <div>Role</div>
+          <div>Status</div>
+        </div>
+
+        {/* Table List */}
+        <div className="flex flex-col flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="flex-1 flex items-center justify-center pt-10">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : data?.data?.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm pt-10">
+              No users found.
+            </div>
+          ) : (
+            data?.data?.map((u) => (
+              <div 
+                key={u.id} 
+                className="grid grid-cols-[2fr_2fr_1fr_1fr] items-center text-sm py-4 border-b border-border/50 hover:bg-[#202020] transition-colors px-2 -mx-2 rounded-lg gap-4"
+              >
+                <div className="font-semibold text-foreground truncate pr-4">{u.name}</div>
+                <div className="text-muted-foreground truncate pr-4">{u.email}</div>
+                <div className="text-muted-foreground">{u.role?.replace(/([A-Z])/g, ' $1').trim()}</div>
+                <div>
+                  <span className={cn(
+                    "px-3 py-1 rounded-full text-[11px] font-bold inline-flex items-center justify-center",
+                    u.is_active !== false
+                      ? "bg-primary text-black" 
+                      : "bg-[#e2e2e2] text-black"
+                  )}>
+                    {u.is_active !== false ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   )
 }

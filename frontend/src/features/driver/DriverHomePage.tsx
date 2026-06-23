@@ -36,36 +36,42 @@ export default function DriverHomePage() {
   if (!hasToken) return <Navigate to="/driver/login" replace />
 
   return (
-    <div className="mx-auto max-w-md p-4">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold">My deliveries</h1>
-        <Button variant="ghost" size="sm" onClick={handleLogout}>
-          Sign out
-        </Button>
-      </div>
-      {isLoading && <p className="text-muted-foreground">Loading…</p>}
-      {isError && <p className="text-destructive">Could not load your deliveries.</p>}
-      <div className="space-y-3">
-        {data?.data?.map((d) => (
-          <Card
-            key={d.id}
-            className="cursor-pointer"
-            onClick={() => navigate(`/driver/deliveries/${d.id}`)}
-          >
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center justify-between text-base">
-                <ActorRefView actor={d.recipient} />
-                <DeliveryStatusBadge status={d.status} />
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              {d.recipient_address_snapshot ?? '—'}
-            </CardContent>
-          </Card>
-        ))}
-        {data && data.data.length === 0 && (
-          <p className="text-muted-foreground">No deliveries assigned right now.</p>
-        )}
+    <div className="flex flex-col min-h-svh font-sans relative overflow-hidden p-4">
+      {/* Minimal Professional Background with Subtle Indigo Glow */}
+      <div className="fixed inset-0 z-0 bg-[#0a0a0a]" />
+      <div className="fixed inset-0 z-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(99,102,241,0.15),rgba(0,0,0,0))]" />
+
+      <div className="relative z-10 mx-auto w-full max-w-md animate-fadeInUp">
+        <div className="mb-4 flex items-center justify-between">
+          <h1 className="text-xl font-semibold text-white drop-shadow-sm">My deliveries</h1>
+          <Button variant="ghost" size="sm" onClick={handleLogout}>
+            Sign out
+          </Button>
+        </div>
+        {isLoading && <p className="text-white/60">Loading…</p>}
+        {isError && <p className="text-error">Could not load your deliveries.</p>}
+        <div className="space-y-3">
+          {data?.data?.map((d) => (
+            <Card
+              key={d.id}
+              className="cursor-pointer"
+              onClick={() => navigate(`/driver/deliveries/${d.id}`)}
+            >
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center justify-between text-base">
+                  <ActorRefView actor={d.recipient} />
+                  <DeliveryStatusBadge status={d.status} />
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm text-white/70">
+                {d.recipient_address_snapshot ?? '—'}
+              </CardContent>
+            </Card>
+          ))}
+          {data && data.data.length === 0 && (
+            <p className="text-white/60">No deliveries assigned right now.</p>
+          )}
+        </div>
       </div>
     </div>
   )

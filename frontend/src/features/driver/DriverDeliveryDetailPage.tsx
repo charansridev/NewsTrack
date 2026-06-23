@@ -54,80 +54,89 @@ export default function DriverDeliveryDetailPage() {
   })
 
   if (!hasToken) return <Navigate to="/driver/login" replace />
-  if (isLoading) return <div className="mx-auto max-w-md p-4"><Skeleton className="h-60 w-full" /></div>
-  if (!delivery)
-    return (
-      <div className="mx-auto max-w-md p-4">
-        <p className="text-destructive">Delivery not found among your assignments.</p>
-        <Button variant="ghost" onClick={() => navigate('/driver')}>
-          Back
-        </Button>
-      </div>
-    )
 
-  const frozen = delivery.status === 'Delivered' || delivery.status === 'Terminated'
+  const frozen = delivery ? (delivery.status === 'Delivered' || delivery.status === 'Terminated') : false
 
   return (
-    <div className="mx-auto max-w-md space-y-4 p-4">
-      <Button variant="ghost" size="sm" className="-ml-2" onClick={() => navigate('/driver')}>
-        <ArrowLeft className="size-4" />
-        My deliveries
-      </Button>
+    <div className="flex flex-col min-h-svh font-sans relative overflow-hidden p-4">
+      {/* Minimal Professional Background with Subtle Indigo Glow */}
+      <div className="fixed inset-0 z-0 bg-[#0a0a0a]" />
+      <div className="fixed inset-0 z-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(99,102,241,0.15),rgba(0,0,0,0))]" />
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center justify-between text-base">
-            <ActorRefView actor={delivery.recipient} />
-            <DeliveryStatusBadge status={delivery.status} />
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-1 text-sm text-muted-foreground">
-          <p>{delivery.recipient_address_snapshot ?? '—'}</p>
-        </CardContent>
-      </Card>
+      <div className="relative z-10 mx-auto w-full max-w-md space-y-4 animate-fadeInUp">
+        {isLoading ? (
+          <Skeleton className="h-60 w-full" />
+        ) : !delivery ? (
+          <div className="space-y-4 text-center py-8">
+            <p className="text-error font-medium">Delivery not found among your assignments.</p>
+            <Button variant="outline" onClick={() => navigate('/driver')}>
+              Back to deliveries
+            </Button>
+          </div>
+        ) : (
+          <>
+            <Button variant="ghost" size="sm" className="-ml-2 text-white/80 hover:text-white" onClick={() => navigate('/driver')}>
+              <ArrowLeft className="size-4" />
+              My deliveries
+            </Button>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Manifest</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {(delivery.items ?? []).map((i) => (
-            <div key={i.id} className="flex items-center justify-between text-sm">
-              <span className="font-mono text-xs">{i.product_id?.slice(0, 10)}</span>
-              <span>{formatQty(i.expected_quantity)}</span>
-              <ItemStatusBadge status={i.status} />
-            </div>
-          ))}
-          {(delivery.items ?? []).length === 0 && (
-            <p className="text-sm text-muted-foreground">No items.</p>
-          )}
-        </CardContent>
-      </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center justify-between text-base">
+                  <ActorRefView actor={delivery.recipient} />
+                  <DeliveryStatusBadge status={delivery.status} />
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1 text-sm text-white/70">
+                <p>{delivery.recipient_address_snapshot ?? '—'}</p>
+              </CardContent>
+            </Card>
 
-      {!frozen && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Update status</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            {DRIVER_STATUSES.map((s) => (
-              <Button
-                key={s}
-                variant="outline"
-                disabled={advance.isPending}
-                onClick={() => advance.mutate(s)}
-              >
-                {s}
-              </Button>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Manifest</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-white">
+                {(delivery.items ?? []).map((i) => (
+                  <div key={i.id} className="flex items-center justify-between text-sm">
+                    <span className="font-mono text-xs text-white/70">{i.product_id?.slice(0, 10)}</span>
+                    <span>{formatQty(i.expected_quantity)}</span>
+                    <ItemStatusBadge status={i.status} />
+                  </div>
+                ))}
+                {(delivery.items ?? []).length === 0 && (
+                  <p className="text-sm text-white/60">No items.</p>
+                )}
+              </CardContent>
+            </Card>
 
-      {(delivery.status === 'OutForDelivery' || delivery.status === 'Delivered') &&
-        !delivery.confirmed_at && <DriverConfirm delivery={delivery} onDone={invalidate} />}
+            {!frozen && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Update status</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-wrap gap-2">
+                  {DRIVER_STATUSES.map((s) => (
+                    <Button
+                      key={s}
+                      variant="outline"
+                      disabled={advance.isPending}
+                      onClick={() => advance.mutate(s)}
+                    >
+                      {s}
+                    </Button>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
 
-      <DriverRaiseIssue deliveryId={delivery.id!} />
+            {(delivery.status === 'OutForDelivery' || delivery.status === 'Delivered') &&
+              !delivery.confirmed_at && <DriverConfirm delivery={delivery} onDone={invalidate} />}
+
+            <DriverRaiseIssue deliveryId={delivery.id!} />
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -161,14 +170,14 @@ function DriverConfirm({ delivery, onDone }: { delivery: Delivery; onDone: () =>
       <CardHeader className="pb-2">
         <CardTitle className="text-base">Confirm delivery</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-3 text-white">
         <div className="space-y-2">
-          <Label htmlFor="d-photo">Photo URL (optional)</Label>
+          <Label htmlFor="d-photo" className="text-white/80">Photo URL (optional)</Label>
           <Input id="d-photo" value={photo} onChange={(e) => setPhoto(e.target.value)} />
         </div>
         {items.map((i) => (
           <div key={i.id} className="flex items-center justify-between gap-2">
-            <span className="text-sm">Expected {formatQty(i.expected_quantity)}</span>
+            <span className="text-sm text-white/80">Expected {formatQty(i.expected_quantity)}</span>
             <Input
               type="number"
               className="w-28"
@@ -177,7 +186,7 @@ function DriverConfirm({ delivery, onDone }: { delivery: Delivery; onDone: () =>
             />
           </div>
         ))}
-        <Button className="w-full" disabled={confirm.isPending} onClick={() => confirm.mutate()}>
+        <Button className="w-full shadow-md" disabled={confirm.isPending} onClick={() => confirm.mutate()}>
           {confirm.isPending ? 'Confirming…' : 'Confirm'}
         </Button>
       </CardContent>
@@ -206,12 +215,12 @@ function DriverRaiseIssue({ deliveryId }: { deliveryId: string }) {
       </CardHeader>
       <CardContent className="space-y-3">
         <select
-          className="border-input h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+          className="h-10 w-full rounded-2xl border border-white/30 bg-[#161618] text-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-white/50"
           value={type}
           onChange={(e) => setType(e.target.value)}
         >
           {ISSUE_TYPES.map((t) => (
-            <option key={t} value={t}>
+            <option key={t} value={t} className="bg-[#161618] text-white">
               {t}
             </option>
           ))}
