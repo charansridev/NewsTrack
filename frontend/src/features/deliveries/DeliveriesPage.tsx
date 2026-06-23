@@ -7,12 +7,9 @@ import { DELIVERY_STATUSES } from '@/lib/enums'
 import { formatDateTime, formatDuration } from '@/lib/format'
 import { PageHeader } from '@/components/PageHeader'
 import { Pagination } from '@/components/Pagination'
-import { DeliveryStatusBadge } from '@/components/StatusBadge'
 import { ActorRefView } from '@/components/ActorRefView'
 import { CreateDeliveryDialog } from './CreateDeliveryDialog'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
 import type { DeliveryStatus } from '@/types/models'
 
 const PAGE_SIZE = 25

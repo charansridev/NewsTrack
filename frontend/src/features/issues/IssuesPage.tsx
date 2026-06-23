@@ -7,7 +7,6 @@ import { ISSUE_STATUSES } from '@/lib/enums'
 import { formatDateTime } from '@/lib/format'
 import { PageHeader } from '@/components/PageHeader'
 import { Pagination } from '@/components/Pagination'
-import { IssueStatusBadge } from '@/components/StatusBadge'
 import { ActorRefView } from '@/components/ActorRefView'
 
 import type { IssueStatus } from '@/types/models'
@@ -23,7 +22,6 @@ export default function IssuesPage() {
   const filters: IssueFilters = { page, page_size: PAGE_SIZE, status }
   const { data, isLoading, isError } = useIssues(filters)
 
-  return (
   return (
     <div className="flex flex-col h-[calc(100vh-140px)] gap-4 animate-fadeIn">
       <PageHeader title="Issues" description="Operational problems and their resolution." />

@@ -9,8 +9,6 @@ import {
 import { formatDuration } from '@/lib/format'
 import { PageHeader } from '@/components/PageHeader'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 
@@ -98,7 +96,7 @@ function DeliverySuccessTab() {
           {[{ id: 'route', label: 'By route' }, { id: 'vendor', label: 'By vendor' }, { id: 'hub', label: 'By hub' }].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setGroupBy(tab.id as any)}
+              onClick={() => setGroupBy(tab.id as 'route' | 'vendor' | 'hub')}
               className={cn(
                 "flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap border",
                 groupBy === tab.id

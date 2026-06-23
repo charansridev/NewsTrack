@@ -10,7 +10,9 @@ import {
   Settings,
   ShoppingCart,
   Wallet,
-  FileText
+  FileText,
+  Building,
+  Users
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
@@ -30,11 +32,13 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/deliveries', label: 'Deliveries', icon: ShoppingCart }, // Using ShoppingCart for cart icon
+  { to: '/deliveries', label: 'Deliveries', icon: ShoppingCart },
   { to: '/products', label: 'Products', icon: Truck },
   { to: '/issues', label: 'Issues', icon: FileText },
   { to: '/drivers', label: 'Drivers', icon: Wallet },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { to: '/organizations', label: 'Organizations', icon: Building },
+  { to: '/users', label: 'Users', icon: Users },
 ]
 
 export function AppLayout() {
@@ -55,7 +59,26 @@ export function AppLayout() {
   })
   const hasOpenIssues = (issuesData?.pagination?.total || 0) > 0
 
-  const items = NAV.filter((i) => !i.roles || (role && i.roles.includes(role)))
+  // Fetch organization details to check if it's a Press
+  const { data: orgData } = useQuery({
+    queryKey: ['org', user?.organization_id],
+    queryFn: async () => {
+      if (!user?.organization_id) return null
+      const res = await api.get(`/organizations/${user.organization_id}`)
+      return res.data
+    },
+    enabled: !!user?.organization_id
+  })
+
+  const isPress = orgData?.type === 'Press'
+
+  const items = NAV.filter((i) => {
+    if (i.label === 'Dashboard' || i.label === 'Deliveries') return true
+    if (i.label === 'Issues') return ['Administrator', 'DistributionManager', 'HubOperator'].includes(role || '')
+    if (i.label === 'Products') return ['Administrator', 'Vendor'].includes(role || '') || (role === 'HubOperator' && isPress)
+    if (i.label === 'Drivers' || i.label === 'Analytics') return ['Administrator', 'DistributionManager'].includes(role || '')
+    return false
+  })
 
   function handleLogout() {
     logout()

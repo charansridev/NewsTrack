@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowUpRight, ChevronDown, Loader2 } from 'lucide-react'
+import { ArrowUpRight, Loader2 } from 'lucide-react'
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { cn } from '@/lib/utils'
