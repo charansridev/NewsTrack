@@ -1,13 +1,13 @@
-services:
+databases:
   # -------------------------
   # PostgreSQL Database
   # -------------------------
-  - type: psql
-    name: newstrack-db
+  - name: newstrack-db
     plan: free # Change to standard if free tier is unavailable or you need more resources
     databaseName: newstrack
     user: newstrack_user
 
+services:
   # -------------------------
   # FastAPI Backend
   # -------------------------
