@@ -17,7 +17,7 @@ services:
     env: python
     region: oregon # or frankfurt, ohio, singapore
     buildCommand: "cd backend && pip install -r requirements.txt"
-    startCommand: "cd backend && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    startCommand: "cd backend && alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: DATABASE_URL
         fromDatabase:
