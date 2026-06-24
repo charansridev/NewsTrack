@@ -48,7 +48,7 @@ services:
       - key: VITE_WS_URL
         value: "wss://newstrack-api.onrender.com/v1"
       - key: NODE_VERSION
-        value: "20.11.0"
+        value: "22"
     routes:
       - type: rewrite
         source: /*
