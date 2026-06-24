@@ -28,3 +28,4 @@ class VehicleOut(BaseModel):
     capacity: int | None = None
     current_driver: str | None = None
     other_details: dict | None = None
+    is_available: bool

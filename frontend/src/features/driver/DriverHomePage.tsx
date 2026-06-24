@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { api } from '@/api/client'
 import { tokenStore } from '@/auth/tokenStore'
 import { useDriverAuth } from '@/auth/DriverAuthContext'
+import { useRealtime } from '@/realtime/useRealtime'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DeliveryStatusBadge } from '@/components/StatusBadge'
@@ -15,7 +16,11 @@ export default function DriverHomePage() {
 
   // Driver session is the separate JWT system. Hooks must run unconditionally,
   // so gate the query on the token and guard the render below.
-  const hasToken = Boolean(tokenStore.getDriverAccess())
+  const token = tokenStore.getDriverAccess()
+  const hasToken = Boolean(token)
+
+  // Subscribes to realtime updates so the driver sees new assignments immediately
+  useRealtime(token)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['driver', 'deliveries'],
@@ -50,28 +55,65 @@ export default function DriverHomePage() {
         </div>
         {isLoading && <p className="text-white/60">Loading…</p>}
         {isError && <p className="text-error">Could not load your deliveries.</p>}
-        <div className="space-y-3">
-          {data?.data?.map((d) => (
-            <Card
-              key={d.id}
-              className="cursor-pointer"
-              onClick={() => navigate(`/driver/deliveries/${d.id}`)}
-            >
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center justify-between text-base">
-                  <ActorRefView actor={d.recipient} />
-                  <DeliveryStatusBadge status={d.status} />
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm text-white/70">
-                {d.recipient_address_snapshot ?? '—'}
-              </CardContent>
-            </Card>
-          ))}
-          {data && data.data.length === 0 && (
-            <p className="text-white/60">No deliveries assigned right now.</p>
-          )}
-        </div>
+        
+        {data && (() => {
+          const newDeliveries = data.data.filter((d) => d.status === 'Created')
+          const activeDeliveries = data.data.filter((d) => d.status !== 'Created' && d.status !== 'Delivered' && d.status !== 'Terminated')
+
+          return (
+            <>
+              {newDeliveries.length > 0 && (
+                <div className="mb-6">
+                  <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-indigo-400">Newly Assigned</h2>
+                  <div className="space-y-3">
+                    {newDeliveries.map((d) => (
+                      <Card
+                        key={d.id}
+                        className="cursor-pointer border-indigo-500/50 bg-indigo-500/10 shadow-indigo-500/20"
+                        onClick={() => navigate(`/driver/deliveries/${d.id}`)}
+                      >
+                        <CardHeader className="pb-2">
+                          <CardTitle className="flex items-center justify-between text-base text-white">
+                            <ActorRefView actor={d.recipient} />
+                            <DeliveryStatusBadge status={d.status} />
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="text-sm text-white/80">
+                          {d.recipient_address_snapshot ?? '—'}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-white/50">Active Deliveries</h2>
+                {activeDeliveries.map((d) => (
+                  <Card
+                    key={d.id}
+                    className="cursor-pointer bg-white/5 border-white/10"
+                    onClick={() => navigate(`/driver/deliveries/${d.id}`)}
+                  >
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center justify-between text-base text-white/90">
+                        <ActorRefView actor={d.recipient} />
+                        <DeliveryStatusBadge status={d.status} />
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="text-sm text-white/60">
+                      {d.recipient_address_snapshot ?? '—'}
+                    </CardContent>
+                  </Card>
+                ))}
+                
+                {data.data.length === 0 && (
+                  <p className="text-white/60">No deliveries assigned right now.</p>
+                )}
+              </div>
+            </>
+          )
+        })()}
       </div>
     </div>
   )

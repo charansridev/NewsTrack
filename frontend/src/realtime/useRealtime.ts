@@ -73,6 +73,7 @@ function handleEvent(payload: ServerEvent, qc: ReturnType<typeof useQueryClient>
 
   if (event.startsWith('delivery.')) {
     void qc.invalidateQueries({ queryKey: ['deliveries'] })
+    void qc.invalidateQueries({ queryKey: ['driver', 'deliveries'] })
   }
   if (event.startsWith('issue.')) {
     void qc.invalidateQueries({ queryKey: ['issues'] })

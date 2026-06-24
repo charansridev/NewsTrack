@@ -23,8 +23,21 @@ import type { Delivery } from '@/types/models'
 
 const NONE = '__none__'
 
-export function AssignDialog({ delivery }: { delivery: Delivery }) {
-  const [open, setOpen] = useState(false)
+export function AssignDialog({ 
+  delivery,
+  open: externalOpen,
+  onOpenChange: externalOnOpenChange,
+  hideTrigger = false
+}: { 
+  delivery: Delivery
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  hideTrigger?: boolean
+}) {
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = externalOpen !== undefined ? externalOpen : internalOpen
+  const setOpen = externalOnOpenChange || setInternalOpen
+
   const [driverId, setDriverId] = useState<string>(delivery.driver_id ?? NONE)
   const [vehicleId, setVehicleId] = useState<string>(delivery.vehicle_id ?? NONE)
   const [remark, setRemark] = useState('')
@@ -44,9 +57,11 @@ export function AssignDialog({ delivery }: { delivery: Delivery }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline">Assign driver / vehicle</Button>
-      </DialogTrigger>
+      {!hideTrigger && (
+        <DialogTrigger asChild>
+          <Button variant="outline">Assign driver / vehicle</Button>
+        </DialogTrigger>
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Assign driver &amp; vehicle</DialogTitle>

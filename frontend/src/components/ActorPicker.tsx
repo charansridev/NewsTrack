@@ -28,11 +28,13 @@ export function ActorPicker({
   onChange,
   placeholder = 'Select actor',
   includeUsers = true,
+  disabled,
 }: {
   value?: string
   onChange: (universalId: string) => void
   placeholder?: string
   includeUsers?: boolean
+  disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const { data: orgs } = useOrganizations()
@@ -55,7 +57,7 @@ export function ActorPicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+        <Button variant="outline" role="combobox" className="w-full justify-between font-normal" disabled={disabled}>
           {selected ? selected.label : <span className="text-muted-foreground">{placeholder}</span>}
           <ChevronsUpDown className="size-4 opacity-50" />
         </Button>

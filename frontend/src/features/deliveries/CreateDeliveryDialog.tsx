@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { useCreateDelivery, type CreateDeliveryInput } from '@/api/deliveries'
-import { useAddresses } from '@/api/references'
+import { AssignDialog } from './AssignDialog'
+import type { Delivery } from '@/types/models'
+import { useAddresses, useOrganizations } from '@/api/references'
 import { useProducts } from '@/api/products'
+import { useAuth } from '@/auth/AuthContext'
 import { ActorPicker } from '@/components/ActorPicker'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,6 +37,7 @@ const NONE = '__none__'
 
 export function CreateDeliveryDialog() {
   const [open, setOpen] = useState(false)
+  const [newDelivery, setNewDelivery] = useState<Delivery | null>(null)
   const [type, setType] = useState<'Delivery' | 'Handend'>('Delivery')
   const [sender, setSender] = useState<string>()
   const [recipient, setRecipient] = useState<string>()
@@ -46,6 +50,19 @@ export function CreateDeliveryDialog() {
   const { data: addresses } = useAddresses()
   const { data: products } = useProducts({ page_size: 200 })
   const create = useCreateDelivery()
+
+  const { user } = useAuth()
+  const { data: orgs } = useOrganizations()
+  const isNonAdmin = user?.role !== 'Administrator'
+
+  useEffect(() => {
+    if (isNonAdmin && user?.organization_id && orgs?.data) {
+      const myOrg = orgs.data.find(o => o.id === user.organization_id)
+      if (myOrg && myOrg.universal_id) {
+        setSender(myOrg.universal_id)
+      }
+    }
+  }, [user, orgs, isNonAdmin])
 
   function reset() {
     setSender(undefined)
@@ -71,13 +88,15 @@ export function CreateDeliveryDialog() {
         .filter((i) => i.product_id && i.expected_quantity)
         .map((i) => ({ product_id: i.product_id, expected_quantity: Number(i.expected_quantity) })),
     }
-    await create.mutateAsync(body)
+    const created = await create.mutateAsync(body)
     setOpen(false)
     reset()
+    setNewDelivery(created)
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button>
           <Plus className="size-4" />
@@ -106,7 +125,7 @@ export function CreateDeliveryDialog() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Sender</Label>
-              <ActorPicker value={sender} onChange={setSender} placeholder="Select sender" />
+              <ActorPicker value={sender} onChange={setSender} placeholder="Select sender" disabled={isNonAdmin} />
             </div>
             <div className="space-y-2">
               <Label>Recipient</Label>
@@ -204,6 +223,18 @@ export function CreateDeliveryDialog() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+      {newDelivery && (
+        <AssignDialog
+          delivery={newDelivery}
+          open={true}
+          onOpenChange={(v) => {
+            if (!v) setNewDelivery(null)
+          }}
+          hideTrigger
+        />
+      )}
+    </>
   )
 }
 

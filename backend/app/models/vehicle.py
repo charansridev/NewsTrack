@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import Boolean, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -18,3 +18,4 @@ class Vehicle(Base):
         UUIDType, ForeignKey("drivers.driver_id"), nullable=True
     )
     other_details: Mapped[dict | None] = mapped_column(JSONType, nullable=True, default=dict)
+    is_available: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

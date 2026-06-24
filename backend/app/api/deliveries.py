@@ -17,6 +17,7 @@ from app.database import get_db
 from app.models.address import Address
 from app.models.delivery import Delivery, DeliveryAccess, DeliveryAllocation
 from app.models.driver import Driver
+from app.models.vehicle import Vehicle
 from app.models.enums import (
     AccessLevel,
     AllocationStatus,
@@ -119,6 +120,11 @@ def create_delivery(
     # Inventory gate: each allocation must draw from an inventory record that
     # belongs to the SENDER org and holds enough current_stock.
     sender_org = org_id_for_universal(db, sender_uid)
+
+    if user.role != UserRole.Administrator:
+        if sender_org != user.organization_id:
+            raise Conflict("You can only create deliveries from your own organization.")
+
     shortfalls = []
     for alloc in body.allocations:
         inv = get_by_id(db, alloc.inventory_id)
@@ -313,6 +319,14 @@ def assign_delivery(
                 action = AssignmentAction.DRIVER_REMOVED
             else:
                 action = AssignmentAction.DRIVER_CHANGED
+            
+            if old_driver is not None:
+                old_d_obj = db.get(Driver, old_driver)
+                if old_d_obj:
+                    old_d_obj.is_available = True
+            if new_driver is not None:
+                driver.is_available = False
+
             d.driver_id = new_driver
             db.add(DeliveryAssignmentLog(
                 action=action, entity_type="DRIVER", delivery_id=d.id,
@@ -324,6 +338,12 @@ def assign_delivery(
     if "vehicle_id" in fields:
         new_vehicle = fields["vehicle_id"]
         old_vehicle = d.vehicle_id
+        if new_vehicle is not None:
+            vehicle = db.get(Vehicle, new_vehicle)
+            if vehicle is None:
+                raise BadRequest("vehicle_id does not reference an existing vehicle.")
+            if not vehicle.is_available and new_vehicle != old_vehicle:
+                raise Conflict("Vehicle is not available for assignment.")
         if new_vehicle != old_vehicle:
             if old_vehicle is None and new_vehicle is not None:
                 action = AssignmentAction.VEHICLE_ASSIGNED
@@ -331,6 +351,14 @@ def assign_delivery(
                 action = AssignmentAction.VEHICLE_REMOVED
             else:
                 action = AssignmentAction.VEHICLE_CHANGED
+            
+            if old_vehicle is not None:
+                old_v_obj = db.get(Vehicle, old_vehicle)
+                if old_v_obj:
+                    old_v_obj.is_available = True
+            if new_vehicle is not None:
+                vehicle.is_available = False
+
             d.vehicle_id = new_vehicle
             db.add(DeliveryAssignmentLog(
                 action=action, entity_type="VEHICLE", delivery_id=d.id,
